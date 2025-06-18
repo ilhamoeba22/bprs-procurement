@@ -14,12 +14,12 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $kantor = Kantor::firstOrCreate(
-            ['kode_kantor' => 'KP01'],
-            ['nama_kantor' => 'Kantor Pusat', 'alamat_kantor' => 'Jl. Jend. Sudirman No.1']
+            ['kode_kantor' => '01'],
+            ['nama_kantor' => 'Kantor Pusat', 'alamat_kantor' => 'Jl. Kaliurang No.KM 9, Gondangan, Sardonoharjo, Kec. Ngaglik, Kabupaten Sleman, Daerah Istimewa Yogyakarta 55581']
         );
 
         $divisi = Divisi::firstOrCreate(
-            ['nama_divisi' => 'IT & MIS', 'id_kantor' => $kantor->id_kantor]
+            ['nama_divisi' => 'IT, MIS, & Product Development', 'id_kantor' => $kantor->id_kantor]
         );
 
         $jabatan = Jabatan::firstOrCreate(
@@ -27,7 +27,9 @@ class DatabaseSeeder extends Seeder
             ['type_jabatan' => 'Administrator']
         );
 
-        User::firstOrCreate(
+        $this->call(RolesAndPermissionsSeeder::class);
+
+        $user = User::firstOrCreate(
             ['nik_user' => 'superadmin'],
             [
                 'nama_user' => 'Super Admin',
@@ -37,5 +39,8 @@ class DatabaseSeeder extends Seeder
                 'id_jabatan' => $jabatan->id_jabatan,
             ]
         );
+
+        // Beri peran Super Admin ke user tersebut
+        $user->assignRole('Super Admin');
     }
 }

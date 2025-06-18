@@ -9,10 +9,11 @@ use Illuminate\Notifications\Notifiable;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements FilamentUser
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, HasRoles;
 
     /**
      * Tentukan primary key jika bukan 'id'.
@@ -86,6 +87,16 @@ class User extends Authenticatable implements FilamentUser
     /**
      * Relasi ke Jabatan.
      */
+    public function kantor(): BelongsTo
+    {
+        return $this->belongsTo(Kantor::class, 'id_kantor', 'id_kantor');
+    }
+
+    public function divisi(): BelongsTo
+    {
+        return $this->belongsTo(Divisi::class, 'id_divisi', 'id_divisi');
+    }
+
     public function jabatan(): BelongsTo
     {
         return $this->belongsTo(Jabatan::class, 'id_jabatan', 'id_jabatan');

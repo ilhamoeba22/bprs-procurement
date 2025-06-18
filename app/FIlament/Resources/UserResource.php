@@ -29,6 +29,11 @@ class UserResource extends Resource
                 Forms\Components\TextInput::make('nama_user')->required()->maxLength(255),
                 Forms\Components\TextInput::make('nik_user')->label('NIK (Username)')->required()->unique(ignoreRecord: true)->alphaNum()->maxLength(255),
                 Forms\Components\TextInput::make('password')->password()->dehydrateStateUsing(fn(string $state): string => Hash::make($state))->dehydrated(fn(?string $state): bool => filled($state))->required(fn(string $operation): bool => $operation === 'create'),
+                Select::make('roles') // Nama field harus 'roles'
+                    ->multiple()
+                    ->relationship('roles', 'name') // Mengambil relasi 'roles' dari model User
+                    ->searchable()
+                    ->preload(),
                 Select::make('id_jabatan')->relationship('jabatan', 'nama_jabatan')->searchable()->preload()->required()->live()
                     ->afterStateUpdated(function (Set $set, ?int $state) {
                         $jabatan = $state ? Jabatan::find($state) : null;
