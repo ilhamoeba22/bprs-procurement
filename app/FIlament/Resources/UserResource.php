@@ -13,14 +13,22 @@ use Filament\Tables\Table;
 use Illuminate\Support\Facades\Hash;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Set;
+use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Get;
+
 
 class UserResource extends Resource
 {
     protected static ?string $model = User::class;
+
     protected static ?string $navigationIcon = 'heroicon-o-users';
     protected static ?string $navigationGroup = 'Pendaftaran User';
     protected static ?string $modelLabel = 'Pengguna';
+
+    public static function canViewAny(): bool
+    {
+        return Auth::user()->hasRole('Super Admin');
+    }
 
     public static function form(Form $form): Form
     {
@@ -29,9 +37,9 @@ class UserResource extends Resource
                 Forms\Components\TextInput::make('nama_user')->required()->maxLength(255),
                 Forms\Components\TextInput::make('nik_user')->label('NIK (Username)')->required()->unique(ignoreRecord: true)->alphaNum()->maxLength(255),
                 Forms\Components\TextInput::make('password')->password()->dehydrateStateUsing(fn(string $state): string => Hash::make($state))->dehydrated(fn(?string $state): bool => filled($state))->required(fn(string $operation): bool => $operation === 'create'),
-                Select::make('roles') // Nama field harus 'roles'
+                Select::make('roles')
                     ->multiple()
-                    ->relationship('roles', 'name') // Mengambil relasi 'roles' dari model User
+                    ->relationship('roles', 'name')
                     ->searchable()
                     ->preload(),
                 Select::make('id_jabatan')->relationship('jabatan', 'nama_jabatan')->searchable()->preload()->required()->live()

@@ -9,16 +9,20 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Auth;
 
 class KantorResource extends Resource
 {
     protected static ?string $model = Kantor::class;
 
-    // Pengaturan Navigasi
     protected static ?string $navigationIcon = 'heroicon-o-building-office-2';
     protected static ?string $navigationGroup = 'Master Data';
     protected static ?int $navigationSort = 1;
 
+    public static function canViewAny(): bool
+    {
+        return Auth::user()->hasRole('Super Admin');
+    }
     public static function form(Form $form): Form
     {
         return $form

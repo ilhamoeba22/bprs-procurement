@@ -20,6 +20,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
+use Filament\Forms;
 
 class RekomendasiIT extends Page implements HasTable
 {
@@ -58,10 +59,28 @@ class RekomendasiIT extends Page implements HasTable
     protected function getTableActions(): array
     {
         return [
-            ViewAction::make()->label('Detail')->form([
-                Section::make('Detail Pengajuan')->schema([Grid::make(3)->schema([TextInput::make('kode_pengajuan')->disabled(), TextInput::make('status')->disabled(), TextInput::make('total_nilai')->prefix('Rp')->label('Total Nilai')->disabled(),]), Textarea::make('catatan_revisi')->label('Catatan Approval/Revisi')->disabled()->columnSpanFull(),]),
-                Section::make('Items')->schema([Repeater::make('items')->relationship()->schema([Grid::make(3)->schema([TextInput::make('kategori_barang')->disabled(), TextInput::make('nama_barang')->disabled()->columnSpan(2), TextInput::make('kuantitas')->disabled(),]), Textarea::make('spesifikasi')->disabled()->columnSpanFull(), Textarea::make('justifikasi')->disabled()->columnSpanFull(),])->columns(2)->disabled(),]),
-            ]),
+            ViewAction::make()->label('Detail')
+                ->mountUsing(fn(Forms\Form $form, Pengajuan $record) => $form->fill($record->load(['items'])->toArray()))
+                ->form([
+                    Section::make('Detail Pengajuan')->schema([
+                        Grid::make(3)->schema([
+                            TextInput::make('kode_pengajuan')->disabled(),
+                            TextInput::make('status')->disabled(),
+                        ]),
+                        Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
+                    ]),
+                    Section::make('Items')->schema([
+                        Repeater::make('items')->relationship()->schema([
+                            Grid::make(3)->schema([
+                                TextInput::make('kategori_barang')->disabled(),
+                                TextInput::make('nama_barang')->disabled()->columnSpan(2),
+                                TextInput::make('kuantitas')->disabled(),
+                            ]),
+                            Textarea::make('spesifikasi')->disabled()->columnSpanFull(),
+                            Textarea::make('justifikasi')->disabled()->columnSpanFull(),
+                        ])->columns(2)->disabled(),
+                    ]),
+                ]),
 
             Action::make('submit_recommendation')
                 ->label('Submit Rekomendasi')->color('primary')->icon('heroicon-o-chat-bubble-bottom-center-text')

@@ -10,15 +10,20 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Forms\Components\Select;
+use Illuminate\Support\Facades\Auth;
 
 class DivisiResource extends Resource
 {
     protected static ?string $model = Divisi::class;
 
-    // Pengaturan Navigasi
     protected static ?string $navigationIcon = 'heroicon-o-briefcase';
     protected static ?string $navigationGroup = 'Master Data';
     protected static ?int $navigationSort = 2;
+
+    public static function canViewAny(): bool
+    {
+        return Auth::user()->hasRole('Super Admin');
+    }
 
     public static function form(Form $form): Form
     {

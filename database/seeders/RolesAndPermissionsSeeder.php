@@ -17,14 +17,15 @@ class RolesAndPermissionsSeeder extends Seeder
         // === DEFINISI SEMUA IZIN (PERMISSIONS) ===
         Permission::firstOrCreate(['name' => 'buat pengajuan']);
         Permission::firstOrCreate(['name' => 'lihat semua pengajuan']);
+        Permission::firstOrCreate(['name' => 'kelola master data']);
+
+        // Izin per tahap
         Permission::firstOrCreate(['name' => 'approval manager']);
         Permission::firstOrCreate(['name' => 'approval kadiv']);
         Permission::firstOrCreate(['name' => 'rekomendasi it']);
         Permission::firstOrCreate(['name' => 'survei harga ga']);
         Permission::firstOrCreate(['name' => 'approval budget']);
-        Permission::firstOrCreate(['name' => 'kelola master data']);
-        Permission::firstOrCreate(['name' => 'approval kadiv ga <= 1jt']);
-        Permission::firstOrCreate(['name' => 'approval budget']);
+        Permission::firstOrCreate(['name' => 'finalisasi keputusan ga']);
         Permission::firstOrCreate(['name' => 'approval direktur operasional']);
         Permission::firstOrCreate(['name' => 'approval direktur utama']);
         Permission::firstOrCreate(['name' => 'pencairan dana']);
@@ -37,12 +38,11 @@ class RolesAndPermissionsSeeder extends Seeder
         Role::firstOrCreate(['name' => 'Kepala Divisi IT'])->givePermissionTo(['buat pengajuan', 'rekomendasi it']);
         Role::firstOrCreate(['name' => 'General Affairs'])->givePermissionTo('survei harga ga');
         Role::firstOrCreate(['name' => 'Tim Budgeting'])->givePermissionTo('approval budget');
-        Role::firstOrCreate(['name' => 'Kepala Divisi GA'])->givePermissionTo(['buat pengajuan', 'approval kadiv ga <= 1jt']);
-        Role::firstOrCreate(['name' => 'Tim Budgeting'])->givePermissionTo('approval budget');
+        // PERBAIKAN DI SINI: Menggunakan izin baru yang lebih sesuai
+        Role::firstOrCreate(['name' => 'Kepala Divisi GA'])->givePermissionTo(['buat pengajuan', 'approval kadiv', 'finalisasi keputusan ga']);
         Role::firstOrCreate(['name' => 'Direktur Operasional'])->givePermissionTo(['buat pengajuan', 'approval direktur operasional', 'lihat semua pengajuan']);
         Role::firstOrCreate(['name' => 'Direktur Utama'])->givePermissionTo(['buat pengajuan', 'approval direktur utama', 'lihat semua pengajuan']);
         Role::firstOrCreate(['name' => 'Kepala Divisi Operasional'])->givePermissionTo('pencairan dana');
-
 
         // Peran Super Admin bisa melakukan segalanya
         Role::firstOrCreate(['name' => 'Super Admin'])->givePermissionTo(Permission::all());

@@ -38,6 +38,7 @@ class Pengajuan extends Model
     public const STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL = 'Menunggu Approval Direktur Operasional';
     public const STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA = 'Menunggu Approval Direktur Utama';
     public const STATUS_MENUNGGU_PENCARIAN_DANA = 'Menunggu Pencairan Dana';
+    public const STATUS_SELESAI = 'Selesai';
 
     // Relasi: Satu pengajuan dimiliki oleh satu user
     public function pemohon(): BelongsTo

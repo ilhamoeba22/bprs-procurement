@@ -14,6 +14,7 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Textarea;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Jabatan;
 use App\Models\Pengajuan;
 use App\Models\User;
 use Filament\Notifications\Notification;
@@ -25,7 +26,6 @@ class BuatPengajuan extends Page implements HasForms
     protected static ?string $navigationIcon = 'heroicon-o-document-plus';
     protected static string $view = 'filament.pages.buat-pengajuan';
     protected static ?string $navigationLabel = 'Buat Pengajuan Baru';
-    // PERBAIKAN 2: Ubah urutan menu agar di bawah Dashboard
     protected static ?int $navigationSort = 1;
 
     public ?array $data = [];
@@ -74,11 +74,7 @@ class BuatPengajuan extends Page implements HasForms
                         ->schema([
                             Grid::make(3)->schema([
                                 TextInput::make('kode_pengajuan')->disabled()->required(),
-                                Select::make('id_user_pemohon')
-                                    ->label('Pemohon')
-                                    ->options(User::all()->pluck('nama_user', 'id_user'))
-                                    ->disabled()
-                                    ->required(),
+                                Select::make('id_user_pemohon')->label('Pemohon')->options(User::all()->pluck('nama_user', 'id_user'))->disabled()->required(),
                                 TextInput::make('nik')->label('NIK Pemohon')->disabled(),
                                 TextInput::make('kantor')->label('Kantor')->disabled(),
                                 TextInput::make('divisi')->label('Divisi')->disabled(),
@@ -110,22 +106,36 @@ class BuatPengajuan extends Page implements HasForms
             ->statePath('data');
     }
 
+    // === PERBAIKAN LOGIKA UTAMA DI SINI ===
     public function create(): void
     {
         $formData = $this->form->getState();
-
         $pemohon = Auth::user();
-        $managerExists = User::where('id_divisi', $pemohon->id_divisi)
-            ->where('id_user', '!=', $pemohon->id_user)
-            ->whereHas('roles', fn($q) => $q->where('name', 'Manager'))
-            ->exists();
 
-        $statusAwal = $managerExists ? Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER : Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV;
+        // 1. Temukan jabatan si pemohon
+        $jabatanPemohon = Jabatan::find($pemohon->id_jabatan);
+        $hasManagerAsDirectSuperior = false;
 
-        // PERBAIKAN 1: Ambil ID pemohon langsung dari sistem otentikasi
+        // 2. Cek apakah pemohon punya atasan langsung
+        if ($jabatanPemohon && $jabatanPemohon->acc_jabatan_id) {
+            // 3. Cari user yang menjabat sebagai atasan tersebut
+            $atasanUser = User::where('id_jabatan', $jabatanPemohon->acc_jabatan_id)->first();
+
+            // 4. Cek apakah atasan tersebut punya peran 'Manager'
+            if ($atasanUser && $atasanUser->hasRole('Manager')) {
+                $hasManagerAsDirectSuperior = true;
+            }
+        }
+
+        // 5. Tentukan status awal berdasarkan hasil pengecekan
+        $statusAwal = $hasManagerAsDirectSuperior
+            ? Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER
+            : Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV;
+
+        // Buat record Pengajuan
         $pengajuan = Pengajuan::create([
             'kode_pengajuan' => $this->generateKodePengajuan(),
-            'id_user_pemohon' => Auth::id(), // Mengambil ID dari user yang login
+            'id_user_pemohon' => Auth::id(),
             'status' => $statusAwal,
         ]);
 

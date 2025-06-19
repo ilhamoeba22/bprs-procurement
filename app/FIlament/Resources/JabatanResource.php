@@ -13,17 +13,22 @@ use Filament\Tables\Table;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Set;
 use Filament\Forms\Get;
-use Illuminate\Database\Eloquent\Builder; // Tambahkan ini
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 
 class JabatanResource extends Resource
 {
     protected static ?string $model = Jabatan::class;
 
-    // Pengaturan Navigasi
     protected static ?string $navigationIcon = 'heroicon-o-identification';
     protected static ?string $navigationGroup = 'Master Data';
     protected static ?int $navigationSort = 3;
+
+    public static function canViewAny(): bool
+    {
+        return Auth::user()->hasRole('Super Admin');
+    }
 
     public static function form(Form $form): Form
     {
