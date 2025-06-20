@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SurveiHarga extends Model
 {
     use HasFactory;
-    protected $fillable = ['id_item', 'nama_vendor', 'harga', 'bukti_path'];
+    protected $fillable = ['id_item', 'tipe_survei', 'nama_vendor', 'harga', 'bukti_path'];
 
     public function item(): BelongsTo
     {

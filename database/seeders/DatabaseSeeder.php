@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+
         $kantor = Kantor::firstOrCreate(
             ['kode_kantor' => '01'],
             ['nama_kantor' => 'Kantor Pusat', 'alamat_kantor' => 'Jl. Kaliurang No.KM 9, Gondangan, Sardonoharjo, Kec. Ngaglik, Kabupaten Sleman, Daerah Istimewa Yogyakarta 55581']
@@ -27,6 +28,7 @@ class DatabaseSeeder extends Seeder
             ['type_jabatan' => 'Administrator']
         );
 
+        $this->call(DivisiSeeder::class);
         $this->call(RolesAndPermissionsSeeder::class);
 
         $user = User::firstOrCreate(

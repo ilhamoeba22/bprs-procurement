@@ -85,10 +85,10 @@ class StatusPengajuanSaya extends Page implements HasTable
                             ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
 
                             // Menampilkan Hasil Budget Control jika ada
-                            Grid::make(2)->schema([
-                                TextInput::make('budget_status')->label('Status Budget')->disabled(),
-                                TextInput::make('budget_catatan')->label('Catatan Budget')->disabled(),
-                            ])->visible(fn($record) => !empty($record?->budget_status)),
+                            // Grid::make(2)->schema([
+                            //     TextInput::make('budget_status')->label('Status Budget')->disabled(),
+                            //     TextInput::make('budget_catatan')->label('Catatan Budget')->disabled(),
+                            // ])->visible(fn($record) => !empty($record?->budget_status)),
 
                             // Menampilkan Keputusan Kadiv GA jika ada
                             Grid::make(2)->schema([

@@ -22,4 +22,14 @@ class PengajuanItem extends Model
     {
         return $this->hasMany(SurveiHarga::class, 'id_item');
     }
+
+    public function surveiPengadaan(): HasMany
+    {
+        return $this->surveiHargas()->where('tipe_survei', 'Pengadaan');
+    }
+
+    public function surveiPerbaikan(): HasMany
+    {
+        return $this->surveiHargas()->where('tipe_survei', 'Perbaikan');
+    }
 }

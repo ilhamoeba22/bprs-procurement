@@ -14,9 +14,9 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Textarea;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
-use App\Models\Jabatan;
 use App\Models\Pengajuan;
 use App\Models\User;
+use App\Models\Jabatan;
 use Filament\Notifications\Notification;
 
 class BuatPengajuan extends Page implements HasForms
@@ -83,23 +83,34 @@ class BuatPengajuan extends Page implements HasForms
                         ]),
                     Wizard\Step::make('Daftar Barang')
                         ->schema([
-                            Repeater::make('items')->schema([
-                                Select::make('kategori_barang')->options([
-                                    '1a. Software' => '1a. Software',
-                                    '1b. Hak Paten' => '1b. Hak Paten',
-                                    '1c. Goodwill' => '1c. Goodwill',
-                                    '1d. Lainnya (Aktiva Tidak Berwujud)' => '1d. Lainnya (Aktiva Tidak Berwujud)',
-                                    '2a. Komputer & Hardware Sistem Informasi' => '2a. Komputer & Hardware Sistem Informasi',
-                                    '2b. Peralatan atau Mesin Kantor' => '2b. Peralatan atau Mesin Kantor',
-                                    '2c. Kendaraan Bermotor' => '2c. Kendaraan Bermotor',
-                                    '2d. Perlengkapan Kantor Lainnya' => '2d. Perlengkapan Kantor Lainnya',
-                                    '2e. Lainnya (Aktiva Berwujud)' => '2e. Lainnya (Aktiva Berwujud)',
-                                ])->required(),
-                                TextInput::make('nama_barang')->required(),
-                                TextInput::make('kuantitas')->numeric()->required()->minValue(1),
-                                Textarea::make('spesifikasi')->required()->columnSpanFull(),
-                                Textarea::make('justifikasi')->required()->columnSpanFull(),
-                            ])->columns(2)->columnSpanFull()->addActionLabel('Tambah Barang'),
+                            Repeater::make('items')
+                                ->schema([
+                                    Select::make('kategori_barang')->options([
+                                        '1a. Software' => '1a. Software',
+                                        '1b. Hak Paten' => '1b. Hak Paten',
+                                        '1c. Goodwill' => '1c. Goodwill',
+                                        '1d. Lainnya (Aktiva Tidak Berwujud)' => '1d. Lainnya (Aktiva Tidak Berwujud)',
+                                        '2a. Komputer & Hardware Sistem Informasi' => '2a. Komputer & Hardware Sistem Informasi',
+                                        '2b. Peralatan atau Mesin Kantor' => '2b. Peralatan atau Mesin Kantor',
+                                        '2c. Kendaraan Bermotor' => '2c. Kendaraan Bermotor',
+                                        '2d. Perlengkapan Kantor Lainnya' => '2d. Perlengkapan Kantor Lainnya',
+                                        '2e. Lainnya (Aktiva Berwujud)' => '2e. Lainnya (Aktiva Berwujud)',
+                                    ])->required(),
+                                    TextInput::make('nama_barang')->required(),
+                                    TextInput::make('kuantitas')->numeric()->required()->minValue(1),
+                                    Textarea::make('spesifikasi')->required()->columnSpanFull(),
+                                    Textarea::make('justifikasi')->required()->columnSpanFull(),
+                                ])
+                                ->columns(2)
+                                ->columnSpanFull()
+                                ->addActionLabel('Tambah Barang')
+                                // === PERBAIKAN DI SINI: Menambahkan validasi ===
+                                ->minItems(1)
+                                ->required()
+                                ->validationMessages([
+                                    'min' => 'Harap tambahkan minimal satu barang untuk diajukan.',
+                                    'required' => 'Harap tambahkan minimal satu barang untuk diajukan.',
+                                ]),
                         ]),
                 ])->columnSpanFull(),
             ])
@@ -111,26 +122,46 @@ class BuatPengajuan extends Page implements HasForms
     {
         $formData = $this->form->getState();
         $pemohon = Auth::user();
+        $statusAwal = ''; // Inisialisasi status
 
-        // 1. Temukan jabatan si pemohon
-        $jabatanPemohon = Jabatan::find($pemohon->id_jabatan);
-        $hasManagerAsDirectSuperior = false;
+        // Daftar peran pimpinan yang bisa melewati approval awal
+        $pimpinanRoles = [
+            'Direktur Utama',
+            'Direktur Operasional',
+            'Kepala Divisi',
+            'Kepala Divisi IT',
+            'Kepala Divisi GA',
+            'Kepala Divisi Operasional'
+        ];
 
-        // 2. Cek apakah pemohon punya atasan langsung
-        if ($jabatanPemohon && $jabatanPemohon->acc_jabatan_id) {
-            // 3. Cari user yang menjabat sebagai atasan tersebut
-            $atasanUser = User::where('id_jabatan', $jabatanPemohon->acc_jabatan_id)->first();
-
-            // 4. Cek apakah atasan tersebut punya peran 'Manager'
-            if ($atasanUser && $atasanUser->hasRole('Manager')) {
-                $hasManagerAsDirectSuperior = true;
+        // Cek apakah pemohon adalah seorang Pimpinan
+        if ($pemohon->hasAnyRole($pimpinanRoles)) {
+            // Jika ya, langsung tentukan alur ke IT atau GA
+            $needsITRecommendation = false;
+            if (isset($formData['items'])) {
+                foreach ($formData['items'] as $item) {
+                    if (in_array($item['kategori_barang'], ['1a. Software', '2a. Komputer & Hardware Sistem Informasi'])) {
+                        $needsITRecommendation = true;
+                        break;
+                    }
+                }
             }
-        }
+            $statusAwal = $needsITRecommendation ? Pengajuan::STATUS_REKOMENDASI_IT : Pengajuan::STATUS_SURVEI_GA;
+        } else {
+            // Jika bukan Pimpinan, jalankan alur persetujuan normal berdasarkan atasan
+            $jabatanPemohon = Jabatan::find($pemohon->id_jabatan);
+            $hasManagerAsDirectSuperior = false;
 
-        // 5. Tentukan status awal berdasarkan hasil pengecekan
-        $statusAwal = $hasManagerAsDirectSuperior
-            ? Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER
-            : Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV;
+            if ($jabatanPemohon && $jabatanPemohon->acc_jabatan_id) {
+                $atasanUser = User::where('id_jabatan', $jabatanPemohon->acc_jabatan_id)->first();
+                if ($atasanUser && $atasanUser->hasRole('Manager')) {
+                    $hasManagerAsDirectSuperior = true;
+                }
+            }
+            $statusAwal = $hasManagerAsDirectSuperior
+                ? Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER
+                : Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV;
+        }
 
         // Buat record Pengajuan
         $pengajuan = Pengajuan::create([
