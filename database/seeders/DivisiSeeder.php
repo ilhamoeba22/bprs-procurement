@@ -21,7 +21,7 @@ class DivisiSeeder extends Seeder
             [
                 'nama_kantor' => 'Kantor Pusat',
                 'alamat_kantor' => 'Alamat Kantor Pusat Default',
-                'kode_kantor' => 'KP01'
+                'kode_kantor' => '01'
             ]
         );
 

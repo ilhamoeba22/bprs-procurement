@@ -42,7 +42,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
 
     protected function getTableQuery(): Builder
     {
-        return Pengajuan::query()->with(['pemohon.divisi'])->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA);
+        return Pengajuan::query()->with(['items.surveiHargas'])->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA);
     }
 
     protected function getTableColumns(): array
@@ -50,9 +50,32 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode Pengajuan')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
-            BadgeColumn::make('budget_status')->label('Status Budget'),
+            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
             BadgeColumn::make('status'),
+
+            // TextColumn::make('tindakan_saya')
+            //     ->label('Tindakan Saya')
+            //     ->state(function (Pengajuan $record): string {
+            //         if ($record->kadiv_approved_by !== Auth::id()) {
+            //             return 'Menunggu Aksi';
+            //         }
+            //         if ($record->status === Pengajuan::STATUS_DITOLAK_KADIV_GA) {
+            //             return 'Ditolak';
+            //         }
+            //         return 'Disetujui';
+            //     })
+            //     ->badge()
+            //     ->color(function (Pengajuan $record): string {
+            //         if ($record->kadiv_approved_by !== Auth::id()) {
+            //             return 'gray';
+            //         }
+            //         if ($record->status === Pengajuan::STATUS_DITOLAK_KADIV_GA) {
+            //             return 'danger';
+            //         }
+            //         return 'success';
+            //     }),
+
+            TextColumn::make('created_at')->label('Tanggal Dibuat')->dateTime('d M Y H:i'),
         ];
     }
 
@@ -101,20 +124,34 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                         ]),
                 ]),
 
-            Action::make('process_approval')
-                ->label('Proses Keputusan')
-                ->color('primary')->icon('heroicon-o-check-circle')
-                ->form([
-                    // === PERBAIKAN DI SINI: Menyederhanakan form ===
-                    Radio::make('keputusan')
-                        ->label('Keputusan')
-                        ->options(['Setuju' => 'Setuju', 'Tolak' => 'Tolak'])
-                        ->required(),
-                    Textarea::make('kadiv_ga_catatan')
-                        ->label('Catatan Keputusan (Wajib diisi jika ditolak)'),
-                ])
+            Action::make('process_decision')
+                ->label('Proses Keputusan')->color('primary')->icon('heroicon-o-check-circle')
+                ->form(function (Pengajuan $record) {
+                    // Hitung total estimasi untuk ditampilkan
+                    $totalPengadaan = $record->items->reduce(fn($carry, $item) => $carry + (($item->surveiHargas()->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $item->kuantitas), 0);
+                    $totalPerbaikan = $record->items->reduce(fn($carry, $item) => $carry + (($item->surveiHargas()->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $item->kuantitas), 0);
+
+                    return [
+                        Forms\Components\Section::make('Ringkasan Informasi')
+                            ->columns(2)
+                            ->schema([
+                                Forms\Components\Placeholder::make('estimasi_pengadaan')->label('Estimasi Biaya Pengadaan')->content('Rp ' . number_format($totalPengadaan, 0, ',', '.')),
+                                Forms\Components\Placeholder::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->content($record->budget_status_pengadaan),
+                                Forms\Components\Placeholder::make('estimasi_perbaikan')->label('Estimasi Biaya Perbaikan')->content('Rp ' . number_format($totalPerbaikan, 0, ',', '.')),
+                                Forms\Components\Placeholder::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->content($record->budget_status_perbaikan),
+                                Forms\Components\Textarea::make('budget_catatan')->label('Catatan Tim Budgeting')->default($record->budget_catatan_pengadaan . "\n" . $record->budget_catatan_perbaikan)->disabled()->columnSpanFull(),
+                            ]),
+
+                        Forms\Components\Radio::make('keputusan_final')
+                            ->label('Persetujuan Final')
+                            ->options(['Pengadaan' => 'Lanjutkan dengan Pengadaan', 'Perbaikan' => 'Lanjutkan dengan Perbaikan', 'Tolak' => 'Tolak Pengajuan'])
+                            ->required(),
+
+                        Forms\Components\Textarea::make('kadiv_ga_catatan')->label('Catatan Keputusan (Wajib diisi jika ditolak)'),
+                    ];
+                })
                 ->action(function (array $data, Pengajuan $record) {
-                    if ($data['keputusan'] === 'Tolak' && empty($data['kadiv_ga_catatan'])) {
+                    if ($data['keputusan_final'] === 'Tolak' && empty($data['kadiv_ga_catatan'])) {
                         Notification::make()->title('Catatan wajib diisi untuk menolak pengajuan.')->danger()->send();
                         return;
                     }
@@ -125,32 +162,41 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                         $catatan .= "\n\n[Keputusan oleh Kadiv GA: {$user}]\n" . $data['kadiv_ga_catatan'];
                     }
 
-                    if ($data['keputusan'] === 'Setuju') {
-                        $newStatus = '';
-                        $budgetStatus = $record->budget_status;
-                        $nilai = $record->total_nilai;
-
-                        if ($budgetStatus === 'Budget Tersedia' && $nilai <= 5000000) {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA;
-                        } elseif ($budgetStatus === 'Budget Habis' || $budgetStatus === 'Budget Tidak Ada di RBB' || ($nilai > 5000000 && $nilai <= 100000000)) {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL;
-                        } elseif ($nilai > 100000000) {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA;
-                        }
-
-                        $record->update([
-                            'kadiv_ga_catatan' => $data['kadiv_ga_catatan'],
-                            'catatan_revisi' => trim($catatan),
-                            'status' => $newStatus,
-                        ]);
-                        Notification::make()->title('Pengajuan berhasil diproses')->success()->send();
-                    } else { // Jika keputusan adalah 'Tolak'
-                        $record->update([
-                            'status' => Pengajuan::STATUS_DITOLAK,
-                            'catatan_revisi' => trim($catatan),
-                        ]);
+                    if ($data['keputusan_final'] === 'Tolak') {
+                        $record->update(['status' => Pengajuan::STATUS_DITOLAK_KADIV_GA, 'catatan_revisi' => trim($catatan)]);
                         Notification::make()->title('Pengajuan ditolak')->danger()->send();
+                        return;
                     }
+
+                    // Tentukan nilai final dan status budget final berdasarkan pilihan Kadiv GA
+                    $nilaiFinal = 0;
+                    $budgetFinal = '';
+                    if ($data['keputusan_final'] === 'Pengadaan') {
+                        $nilaiFinal = $record->items->reduce(fn($carry, $item) => $carry + (($item->surveiHargas()->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $item->kuantitas), 0);
+                        $budgetFinal = $record->budget_status_pengadaan;
+                    } else { // Jika Perbaikan
+                        $nilaiFinal = $record->items->reduce(fn($carry, $item) => $carry + (($item->surveiHargas()->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $item->kuantitas), 0);
+                        $budgetFinal = $record->budget_status_perbaikan;
+                    }
+
+                    // Tentukan alur selanjutnya berdasarkan logika yang sama
+                    $newStatus = '';
+                    if ($budgetFinal === 'Budget Tersedia' && $nilaiFinal <= 5000000) {
+                        $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA;
+                    } elseif ($budgetFinal === 'Budget Habis' || $budgetFinal === 'Budget Tidak Ada di RBB' || ($nilaiFinal > 5000000 && $nilaiFinal <= 100000000)) {
+                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL;
+                    } elseif ($nilaiFinal > 100000000) {
+                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA;
+                    }
+
+                    $record->update([
+                        'total_nilai' => $nilaiFinal, // Set nilai final di sini
+                        'kadiv_ga_decision_type' => $data['keputusan_final'],
+                        'kadiv_ga_catatan' => $data['kadiv_ga_catatan'],
+                        'catatan_revisi' => trim($catatan),
+                        'status' => $newStatus,
+                    ]);
+                    Notification::make()->title('Keputusan berhasil diproses')->success()->send();
                 }),
         ];
     }

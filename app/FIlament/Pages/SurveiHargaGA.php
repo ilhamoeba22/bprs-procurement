@@ -2,25 +2,27 @@
 
 namespace App\Filament\Pages;
 
-use Filament\Pages\Page;
-use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Concerns\InteractsWithTable;
-use App\Models\Pengajuan;
-use Illuminate\Support\Facades\Auth;
-use Filament\Tables\Table;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\BadgeColumn;
-use Illuminate\Database\Eloquent\Builder;
-use Filament\Tables\Actions\Action;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Repeater;
-use Filament\Notifications\Notification;
-use Filament\Tables\Actions\ViewAction;
-use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\Section;
 use Filament\Forms;
+use Filament\Pages\Page;
+use App\Models\Pengajuan;
+use Filament\Tables\Table;
+use Filament\Forms\Components\Grid;
+use Filament\Tables\Actions\Action;
+use Filament\Forms\Components\Radio;
+use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Textarea;
+use Filament\Tables\Actions\ViewAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
+use Filament\Tables\Columns\BadgeColumn;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
+use Illuminate\Database\Eloquent\Builder;
+use Filament\Tables\Concerns\InteractsWithTable;
 
 class SurveiHargaGA extends Page implements HasTable
 {
@@ -40,19 +42,38 @@ class SurveiHargaGA extends Page implements HasTable
     {
         return Auth::user()->hasAnyRole(['General Affairs', 'Super Admin']);
     }
-
     protected function getTableQuery(): Builder
     {
-        return Pengajuan::query()->with(['pemohon.divisi', 'items'])->where('status', Pengajuan::STATUS_SURVEI_GA);
+        $user = Auth::user();
+        $query = Pengajuan::query()->with(['pemohon.divisi', 'items.surveiHargas']);
+
+        if (! $user->hasRole('Super Admin')) {
+            $query->where(function (Builder $q) use ($user) {
+                $q->where('status', Pengajuan::STATUS_SURVEI_GA)
+                    ->orWhere('ga_surveyed_by', $user->id_user);
+            });
+        } else {
+            $query->whereIn('status', [
+                Pengajuan::STATUS_SURVEI_GA,
+                Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
+            ])->orWhereNotNull('ga_surveyed_by');
+        }
+
+        return $query->latest();
     }
+
+    // protected function getTableQuery(): Builder
+    // {
+    //     return Pengajuan::query()->with(['pemohon.divisi', 'items'])->where('status', Pengajuan::STATUS_SURVEI_GA);
+    // }
 
     protected function getTableColumns(): array
     {
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
             BadgeColumn::make('status'),
+            TextColumn::make('created_at')->label('Tanggal Dibuat')->dateTime('d M Y H:i'),
         ];
     }
 
@@ -60,33 +81,40 @@ class SurveiHargaGA extends Page implements HasTable
     {
         return [
             ViewAction::make()->label('Detail')
-                ->mountUsing(fn(Forms\Form $form, Pengajuan $record) => $form->fill($record->load('items')->toArray()))
+                ->mountUsing(fn(Forms\Form $form, Pengajuan $record) => $form->fill($record->load('items', 'items.surveiHargas')->toArray()))
                 ->form([
-                    Section::make('Detail Pengajuan')
+                    Section::make('Detail Pengajuan')->schema([
+                        Grid::make(3)->schema([
+                            TextInput::make('kode_pengajuan')->disabled(),
+                            TextInput::make('status')->disabled(),
+                        ]),
+                        Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
+                        Grid::make(2)->schema([
+                            TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
+                            Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
+                        ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
+                    ]),
+                    Section::make('Opsi Pembayaran (Hasil Survei GA)')
                         ->schema([
                             Grid::make(3)->schema([
-                                TextInput::make('kode_pengajuan')->disabled(),
-                                TextInput::make('status')->disabled(),
-                            ]),
-                            Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
-
-                            // Menampilkan Rekomendasi IT jika ada
-                            Grid::make(2)->schema([
-                                TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
-                                Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
-                            ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
-                        ]),
-                    Section::make('Items')
+                                TextInput::make('opsi_pembayaran')->label('Opsi Pembayaran')->disabled(),
+                                DatePicker::make('tanggal_dp')->label('Tanggal DP')->disabled(),
+                                DatePicker::make('tanggal_pelunasan')->label('Tanggal Pelunasan')->disabled(),
+                            ])
+                        ])
+                        ->visible(fn($record) => !empty($record?->opsi_pembayaran)),
+                    Section::make('Hasil Survei Harga')
                         ->schema([
                             Repeater::make('items')->relationship()->schema([
-                                Grid::make(3)->schema([
-                                    TextInput::make('kategori_barang')->disabled(),
-                                    TextInput::make('nama_barang')->disabled()->columnSpan(2),
-                                    TextInput::make('kuantitas')->disabled(),
-                                ]),
-                                Textarea::make('spesifikasi')->disabled()->columnSpanFull(),
-                                Textarea::make('justifikasi')->disabled()->columnSpanFull(),
-                            ])->columns(2)->disabled(),
+                                TextInput::make('nama_barang')->disabled()->columnSpanFull(),
+                                Repeater::make('surveiHargas')->label('Detail Harga Pembanding')->relationship()->schema([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('tipe_survei')->disabled(),
+                                        TextInput::make('nama_vendor')->label('Vendor/Link')->disabled(),
+                                        TextInput::make('harga')->prefix('Rp')->disabled(),
+                                    ])
+                                ])->disabled()->columns(1),
+                            ])->columnSpanFull()->disabled(),
                         ]),
                 ]),
             Action::make('submit_survey')
@@ -95,65 +123,76 @@ class SurveiHargaGA extends Page implements HasTable
                     $itemsSchema = [];
                     foreach ($record->items as $item) {
                         $itemsSchema[] = Forms\Components\Section::make('Item: ' . $item->nama_barang)
+                            ->description("Kategori: {$item->kategori_barang} | Kuantitas: {$item->kuantitas}")
                             ->schema([
-                                Forms\Components\Section::make('Hasil Survei jika PENGADAAN BARU')
-                                    ->schema([
-                                        Forms\Components\Repeater::make("survei_pengadaan_{$item->id_item}")
-                                            ->label('Input Harga Pembanding (Pengadaan)')
-                                            ->schema([
-                                                Forms\Components\TextInput::make('nama_vendor')->label('Nama Vendor / Link')->required(),
-                                                Forms\Components\TextInput::make('harga')->numeric()->required()->prefix('Rp'),
-                                                Forms\Components\FileUpload::make('bukti_path')->required()->directory('bukti-survei')->visibility('private'),
-                                            ])->minItems(3)->maxItems(3)->addActionLabel('Tambah Pembanding'),
-                                    ]),
-                                Forms\Components\Section::make('Hasil Survei jika PERBAIKAN')
-                                    ->schema([
-                                        Forms\Components\Repeater::make("survei_perbaikan_{$item->id_item}")
-                                            ->label('Input Harga Pembanding (Perbaikan)')
-                                            ->schema([
-                                                Forms\Components\TextInput::make('nama_vendor')->label('Nama Vendor / Link')->required(),
-                                                Forms\Components\TextInput::make('harga')->numeric()->required()->prefix('Rp'),
-                                                Forms\Components\FileUpload::make('bukti_path')->required()->directory('bukti-survei')->visibility('private'),
-                                            ])->minItems(3)->maxItems(3)->addActionLabel('Tambah Pembanding'),
-                                    ]),
+                                Forms\Components\Section::make('Hasil Survei jika PENGADAAN BARU')->schema([
+                                    Forms\Components\Repeater::make("survei_pengadaan_{$item->id_item}")->label('Input Harga Pembanding (Pengadaan)')->schema([
+                                        Forms\Components\TextInput::make('nama_vendor')->label('Nama Vendor / Link')->required(),
+                                        Forms\Components\TextInput::make('harga')->numeric()->required()->prefix('Rp'),
+                                        Forms\Components\FileUpload::make('bukti_path')->required()->directory('bukti-survei')->visibility('private'),
+                                    ])->minItems(3)->maxItems(3)->addActionLabel('Tambah Pembanding'),
+                                ]),
+                                Forms\Components\Section::make('Hasil Survei jika PERBAIKAN')->schema([
+                                    Forms\Components\Repeater::make("survei_perbaikan_{$item->id_item}")->label('Input Harga Pembanding (Perbaikan)')->schema([
+                                        Forms\Components\TextInput::make('nama_vendor')->label('Nama Vendor / Link')->required(),
+                                        Forms\Components\TextInput::make('harga')->numeric()->required()->prefix('Rp'),
+                                        Forms\Components\FileUpload::make('bukti_path')->required()->directory('bukti-survei')->visibility('private'),
+                                    ])->minItems(3)->maxItems(3)->addActionLabel('Tambah Pembanding'),
+                                ]),
                             ]);
                     }
+
+                    // Menambahkan form untuk Opsi Pembayaran
+                    $itemsSchema[] = Forms\Components\Section::make('Opsi Pembayaran')
+                        ->schema([
+                            Forms\Components\Radio::make('opsi_pembayaran')->label('Opsi Pembayaran')->options(['Bisa DP' => 'Bisa DP', 'Langsung Lunas' => 'Langsung Lunas'])->required()->live(),
+                            Forms\Components\DatePicker::make('tanggal_dp')->label('Tanggal Pembayaran DP')->required()->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
+                            Forms\Components\DatePicker::make('tanggal_pelunasan')->label('Tanggal Pelunasan')->required()->visible(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas'])),
+                        ]);
+
                     return $itemsSchema;
                 })
+                // === PERBAIKAN LOGIKA PENYIMPANAN DI SINI ===
                 ->action(function (array $data, Pengajuan $record) {
                     $totalNilaiPengajuan = 0;
-
                     foreach ($record->items as $item) {
-                        // Proses data untuk survei pengadaan
+                        // Proses dan simpan data untuk survei pengadaan
                         $pengadaanKey = "survei_pengadaan_{$item->id_item}";
-                        if (isset($data[$pengadaanKey])) {
-                            $item->surveiPengadaan()->delete(); // Hapus data lama
+                        if (isset($data[$pengadaanKey]) && is_array($data[$pengadaanKey])) {
+                            $item->surveiHargas()->where('tipe_survei', 'Pengadaan')->delete();
                             foreach ($data[$pengadaanKey] as $surveyData) {
-                                $item->surveiPengadaan()->create($surveyData);
+                                $surveyData['tipe_survei'] = 'Pengadaan';
+                                $item->surveiHargas()->create($surveyData);
                             }
                         }
 
-                        // Proses data untuk survei perbaikan
+                        // Proses dan simpan data untuk survei perbaikan
                         $perbaikanKey = "survei_perbaikan_{$item->id_item}";
-                        if (isset($data[$perbaikanKey])) {
-                            $item->surveiPerbaikan()->delete(); // Hapus data lama
+                        if (isset($data[$perbaikanKey]) && is_array($data[$perbaikanKey])) {
+                            $item->surveiHargas()->where('tipe_survei', 'Perbaikan')->delete();
                             foreach ($data[$perbaikanKey] as $surveyData) {
-                                $item->surveiPerbaikan()->create($surveyData);
+                                $surveyData['tipe_survei'] = 'Perbaikan';
+                                $item->surveiHargas()->create($surveyData);
                             }
                         }
 
-                        // Tentukan harga final dari survei pengadaan
-                        $hargaTermurah = $item->surveiPengadaan()->min('harga');
-                        $item->update(['harga_final' => $hargaTermurah]);
-                        $totalNilaiPengajuan += ($hargaTermurah ?? 0) * $item->kuantitas;
+                        // $hargaTermurah = $item->surveiHargas()->where('tipe_survei', 'Pengadaan')->min('harga');
+                        // $item->update(['harga_final' => $hargaTermurah]);
+                        // $totalNilaiPengajuan += ($hargaTermurah ?? 0) * $item->kuantitas;
                     }
 
+                    // Simpan semua data termasuk Opsi Pembayaran yang baru
                     $record->update([
-                        'total_nilai' => $totalNilaiPengajuan,
+                        // 'total_nilai' => $totalNilaiPengajuan,
                         'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
+                        'ga_surveyed_by' => Auth::id(),
+                        'opsi_pembayaran' => $data['opsi_pembayaran'],
+                        'tanggal_dp' => $data['tanggal_dp'] ?? null,
+                        'tanggal_pelunasan' => $data['tanggal_pelunasan'] ?? null,
                     ]);
                     Notification::make()->title('Hasil survei berhasil disubmit')->success()->send();
-                })->modalWidth('5xl'),
+                })->modalWidth('5xl')
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_SURVEI_GA),
         ];
     }
 }

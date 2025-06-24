@@ -2,15 +2,20 @@
 
 namespace App\Filament\Pages;
 
+use Filament\Forms;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
 use Filament\Infolists\Infolist;
+use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
 use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Textarea;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\BadgeColumn;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Notifications\Notification;
@@ -57,7 +62,49 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
     protected function getTableActions(): array
     {
         return [
-            ViewAction::make()->label('Detail')->infolist(fn(Infolist $infolist) => $this->getDetailInfolist($infolist)),
+            ViewAction::make()->label('Detail')
+                ->mountUsing(fn(Forms\Form $form, Pengajuan $record) => $form->fill($record->load('items')->toArray()))
+                ->form([
+                    Section::make('Detail Pengajuan')
+                        ->schema([
+                            Grid::make(3)->schema([
+                                TextInput::make('kode_pengajuan')->disabled(),
+                                TextInput::make('status')->disabled(),
+                                TextInput::make('total_nilai')->prefix('Rp')->label('Total Nilai')->disabled(),
+                            ]),
+                            Textarea::make('catatan_revisi')->label('Catatan Approval/Revisi')->disabled()->columnSpanFull(),
+
+                            // Menampilkan semua catatan dari tahap sebelumnya
+                            Grid::make(2)->schema([
+                                TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
+                                Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
+                            ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
+
+                            Grid::make(2)->schema([
+                                TextInput::make('budget_status')->label('Status Budget')->disabled(),
+                                Textarea::make('budget_catatan')->label('Catatan Budget')->disabled(),
+                            ])->visible(fn($record) => !empty($record?->budget_status)),
+
+                            Grid::make(2)->schema([
+                                TextInput::make('kadiv_ga_decision_type')->label('Keputusan Tipe dari Kadiv GA')->disabled(),
+                                Textarea::make('kadiv_ga_catatan')->label('Keputusan Catatan dari Kadiv GA')->disabled(),
+                            ])->visible(fn($record) => !empty($record?->kadiv_ga_decision_type)),
+                        ]),
+
+                    Section::make('Items')->schema([
+                        Repeater::make('items')
+                            ->relationship()
+                            ->schema([
+                                Grid::make(3)->schema([
+                                    TextInput::make('kategori_barang')->disabled(),
+                                    TextInput::make('nama_barang')->disabled()->columnSpan(2),
+                                    TextInput::make('kuantitas')->disabled(),
+                                ]),
+                                Textarea::make('spesifikasi')->disabled()->columnSpanFull(),
+                                Textarea::make('justifikasi')->disabled()->columnSpanFull(),
+                            ])->columns(2)->disabled(),
+                    ]),
+                ]),
             Action::make('approve')
                 ->label('Setujui')->color('success')->icon('heroicon-o-check-circle')->requiresConfirmation()
                 ->action(fn(Pengajuan $record) => $record->update(['status' => Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA])),
@@ -66,7 +113,7 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
                 ->form([Textarea::make('catatan_revisi')->label('Alasan Penolakan')->required(),])
                 ->action(function (array $data, Pengajuan $record) {
                     $record->update([
-                        'status' => Pengajuan::STATUS_DITOLAK,
+                        'status' => Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL,
                         'catatan_revisi' => $record->catatan_revisi . "\n\n[Ditolak oleh Direktur Operasional: " . Auth::user()->nama_user . "]\n" . $data['catatan_revisi'],
                     ]);
                     Notification::make()->title('Pengajuan ditolak')->danger()->send();

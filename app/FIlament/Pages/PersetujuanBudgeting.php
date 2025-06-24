@@ -3,12 +3,14 @@
 namespace App\Filament\Pages;
 
 use Filament\Forms;
+use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
 use Filament\Tables\Table;
 use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
 use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Textarea;
@@ -18,6 +20,7 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
+use Filament\Forms\Components\DatePicker;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Tables\Concerns\InteractsWithTable;
 
@@ -59,7 +62,7 @@ class PersetujuanBudgeting extends Page implements HasTable
     {
         return [
             ViewAction::make()->label('Detail')
-                ->mountUsing(fn(Forms\Form $form, Pengajuan $record) => $form->fill($record->load('items')->toArray()))
+                ->mountUsing(fn(Form $form, Pengajuan $record) => $form->fill($record->load('items')->toArray()))
                 ->form([
                     Section::make('Detail Pengajuan')
                         ->schema([
@@ -75,6 +78,15 @@ class PersetujuanBudgeting extends Page implements HasTable
                                 Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
                             ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
                         ]),
+                    Section::make('Opsi Pembayaran (Hasil Survei GA)')
+                        ->schema([
+                            Grid::make(3)->schema([
+                                TextInput::make('opsi_pembayaran')->label('Opsi Pembayaran')->disabled(),
+                                DatePicker::make('tanggal_dp')->label('Tanggal DP')->disabled(),
+                                DatePicker::make('tanggal_pelunasan')->label('Tanggal Pelunasan')->disabled(),
+                            ])
+                        ])
+                        ->visible(fn($record) => !empty($record?->opsi_pembayaran)),
                     Section::make('Items')
                         ->schema([
                             Repeater::make('items')->relationship()->schema([
@@ -91,26 +103,40 @@ class PersetujuanBudgeting extends Page implements HasTable
 
             Action::make('submit_budget_review')
                 ->label('Submit Review Budget')->color('primary')->icon('heroicon-o-pencil-square')
-                ->form([
-                    Forms\Components\Select::make('budget_status')
-                        ->label('Status Ketersediaan Budget')
-                        ->options([
-                            'Budget Tersedia' => 'Budget Tersedia',
-                            'Budget Habis' => 'Budget Habis',
-                            'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB',
-                        ])->required(),
-                    Forms\Components\Textarea::make('budget_catatan')->label('Catatan Tim Budgeting (Opsional)'),
-                ])
-                ->action(function (array $data, Pengajuan $record) {
-                    // Setelah budget control, SELALU teruskan ke Kadiv GA
-                    $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA;
+                ->form(function (Pengajuan $record) {
+                    // Hitung total nilai untuk masing-masing skenario
+                    $totalPengadaan = $record->items->reduce(function ($carry, $item) {
+                        return $carry + (($item->surveiHargas()->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $item->kuantitas);
+                    }, 0);
+                    $totalPerbaikan = $record->items->reduce(function ($carry, $item) {
+                        return $carry + (($item->surveiHargas()->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $item->kuantitas);
+                    }, 0);
 
+                    return [
+                        Section::make('Review Budget untuk Skenario PENGADAAN')
+                            ->description('Total Estimasi: Rp ' . number_format($totalPengadaan, 0, ',', '.'))
+                            ->schema([
+                                Select::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->options(['Budget Tersedia' => 'Budget Tersedia', 'Budget Habis' => 'Budget Habis', 'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB'])->required(),
+                                Textarea::make('budget_catatan_pengadaan')->label('Catatan (Opsional)'),
+                            ]),
+
+                        Section::make('Review Budget untuk Skenario PERBAIKAN')
+                            ->description('Total Estimasi: Rp ' . number_format($totalPerbaikan, 0, ',', '.'))
+                            ->schema([
+                                Select::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->options(['Budget Tersedia' => 'Budget Tersedia', 'Budget Habis' => 'Budget Habis', 'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB'])->required(),
+                                Textarea::make('budget_catatan_perbaikan')->label('Catatan (Opsional)'),
+                            ]),
+                    ];
+                })
+                ->action(function (array $data, Pengajuan $record) {
                     $record->update([
-                        'budget_status' => $data['budget_status'],
-                        'budget_catatan' => $data['budget_catatan'],
-                        'status' => $newStatus,
+                        'budget_status_pengadaan' => $data['budget_status_pengadaan'],
+                        'budget_catatan_pengadaan' => $data['budget_catatan_pengadaan'],
+                        'budget_status_perbaikan' => $data['budget_status_perbaikan'],
+                        'budget_catatan_perbaikan' => $data['budget_catatan_perbaikan'],
+                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA,
                     ]);
-                    Notification::make()->title('Review budget berhasil disubmit')->success()->send();
+                    Notification::make()->title('Review budget berhasil disubmit ke Kadiv GA')->success()->send();
                 }),
         ];
     }

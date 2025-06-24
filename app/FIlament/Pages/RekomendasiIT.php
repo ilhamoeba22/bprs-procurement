@@ -2,25 +2,25 @@
 
 namespace App\Filament\Pages;
 
+use Filament\Forms;
 use Filament\Pages\Page;
-use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Concerns\InteractsWithTable;
 use App\Models\Pengajuan;
-use Illuminate\Support\Facades\Auth;
 use Filament\Tables\Table;
+use Filament\Forms\Components\Grid;
+use Filament\Tables\Actions\Action;
+use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Textarea;
+use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
 use Illuminate\Database\Eloquent\Builder;
-use Filament\Tables\Actions\Action;
-use Filament\Tables\Actions\ViewAction;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\Select;
-use Filament\Notifications\Notification;
-use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\Section;
-use Filament\Forms;
+use Filament\Tables\Concerns\InteractsWithTable;
 
 class RekomendasiIT extends Page implements HasTable
 {
@@ -43,7 +43,10 @@ class RekomendasiIT extends Page implements HasTable
 
     protected function getTableQuery(): Builder
     {
-        return Pengajuan::query()->with(['pemohon.divisi', 'items'])->where('status', Pengajuan::STATUS_REKOMENDASI_IT);
+        $user = Auth::user();
+        return Pengajuan::query()
+            ->where('status', Pengajuan::STATUS_REKOMENDASI_IT)
+            ->orWhere('it_recommended_by', $user->id_user);
     }
 
     protected function getTableColumns(): array
@@ -68,6 +71,10 @@ class RekomendasiIT extends Page implements HasTable
                             TextInput::make('status')->disabled(),
                         ]),
                         Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
+                        Grid::make(2)->schema([
+                            TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
+                            Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
+                        ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
                     ]),
                     Section::make('Items')->schema([
                         Repeater::make('items')->relationship()->schema([
@@ -85,17 +92,19 @@ class RekomendasiIT extends Page implements HasTable
             Action::make('submit_recommendation')
                 ->label('Submit Rekomendasi')->color('primary')->icon('heroicon-o-chat-bubble-bottom-center-text')
                 ->form([
-                    Select::make('rekomendasi_it_tipe')->label('Tipe Rekomendasi')->options(['Pembelian Baru' => 'Pembelian Baru', 'Perbaikan' => 'Perbaikan'])->required(),
-                    Textarea::make('rekomendasi_it_catatan')->label('Catatan Rekomendasi')->required(),
+                    Forms\Components\Select::make('rekomendasi_it_tipe')->label('Tipe Rekomendasi')->options(['Pembelian Baru' => 'Pembelian Baru', 'Perbaikan' => 'Perbaikan'])->required(),
+                    Forms\Components\Textarea::make('rekomendasi_it_catatan')->label('Catatan Rekomendasi')->required(),
                 ])
                 ->action(function (array $data, Pengajuan $record) {
                     $record->update([
                         'rekomendasi_it_tipe' => $data['rekomendasi_it_tipe'],
                         'rekomendasi_it_catatan' => $data['rekomendasi_it_catatan'],
                         'status' => Pengajuan::STATUS_SURVEI_GA,
+                        'it_recommended_by' => Auth::id(), // Catat siapa yang memberi rekomendasi
                     ]);
                     Notification::make()->title('Rekomendasi berhasil disubmit')->success()->send();
-                }),
+                })
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_REKOMENDASI_IT),
         ];
     }
 }

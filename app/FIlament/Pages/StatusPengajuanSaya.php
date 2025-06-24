@@ -44,7 +44,13 @@ class StatusPengajuanSaya extends Page implements HasTable
             BadgeColumn::make('status')
                 ->colors([
                     'gray'      => Pengajuan::STATUS_DRAFT,
-                    'danger'    => Pengajuan::STATUS_DITOLAK,
+                    'danger'    => [
+                        Pengajuan::STATUS_DITOLAK_MANAGER,
+                        Pengajuan::STATUS_DITOLAK_KADIV,
+                        Pengajuan::STATUS_DITOLAK_KADIV_GA,
+                        Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL,
+                        Pengajuan::STATUS_DITOLAK_DIREKTUR_UTAMA,
+                    ],
                     'warning'   => fn($state) => in_array($state, [
                         Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER,
                         Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV,
