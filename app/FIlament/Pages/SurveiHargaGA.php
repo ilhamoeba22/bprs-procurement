@@ -68,8 +68,19 @@ class SurveiHargaGA extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            BadgeColumn::make('status'),
-            TextColumn::make('created_at')->label('Tanggal Dibuat')->dateTime('d M Y H:i'),
+            BadgeColumn::make('status')->label('Status Saat Ini'),
+            BadgeColumn::make('tindakan_saya')
+                ->label('Keterangan')
+                ->state(function (Pengajuan $record): string {
+                    if ($record->ga_surveyed_by !== Auth::id()) {
+                        return 'Menunggu Aksi';
+                    }
+                    return 'Sudah Disurvei';
+                })
+                ->color(fn(string $state): string => match ($state) {
+                    'Sudah Disurvei' => 'success',
+                    default => 'gray',
+                }),
         ];
     }
 
@@ -181,7 +192,8 @@ class SurveiHargaGA extends Page implements HasTable
                         'ga_surveyed_by' => Auth::id(),
                     ]);
                     Notification::make()->title('Hasil survei berhasil disubmit')->success()->send();
-                })->modalWidth('6xl'),
+                })->modalWidth('6xl')
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_SURVEI_GA),
         ];
     }
 }

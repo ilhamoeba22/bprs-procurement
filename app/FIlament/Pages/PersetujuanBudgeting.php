@@ -65,7 +65,7 @@ class PersetujuanBudgeting extends Page implements HasTable
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             BadgeColumn::make('status')->label('Status Saat Ini'),
             BadgeColumn::make('tindakan_saya')
-                ->label('Tindakan Saya')
+                ->label('Keterangan')
                 ->state(function (Pengajuan $record): string {
                     if ($record->budget_approved_by !== Auth::id()) {
                         return 'Menunggu Aksi';
@@ -82,44 +82,37 @@ class PersetujuanBudgeting extends Page implements HasTable
     protected function getTableActions(): array
     {
         return [
+            // === PERBAIKAN PADA LIHAT DETAIL ===
             ViewAction::make()->label('Detail')
-                ->mountUsing(fn(Form $form, Pengajuan $record) => $form->fill($record->load('items')->toArray()))
+                ->mountUsing(function (Form $form, Pengajuan $record) {
+                    $record->load(['items', 'items.surveiHargas']);
+                    $record->estimasi_pengadaan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $record->estimasi_perbaikan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $form->fill($record->toArray());
+                })
                 ->form([
-                    Section::make('Detail Pengajuan')
-                        ->schema([
-                            Grid::make(3)->schema([
-                                TextInput::make('kode_pengajuan')->disabled(),
-                                TextInput::make('status')->disabled(),
-                            ]),
-                            Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
-
-                            // Menampilkan Rekomendasi IT jika ada
-                            Grid::make(2)->schema([
-                                TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
-                                Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
-                            ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
+                    Section::make('Detail Pengajuan')->schema([
+                        Grid::make(2)->schema([
+                            TextInput::make('kode_pengajuan')->disabled(),
+                            TextInput::make('status')->disabled(),
+                            TextInput::make('estimasi_pengadaan')->label('Estimasi Total Pengadaan')->disabled(),
+                            TextInput::make('estimasi_perbaikan')->label('Estimasi Total Perbaikan')->disabled(),
                         ]),
-                    // Section::make('Opsi Pembayaran (Hasil Survei GA)')
-                    //     ->schema([
-                    //         Grid::make(3)->schema([
-                    //             TextInput::make('opsi_pembayaran')->label('Opsi Pembayaran')->disabled(),
-                    //             DatePicker::make('tanggal_dp')->label('Tanggal DP')->disabled(),
-                    //             DatePicker::make('tanggal_pelunasan')->label('Tanggal Pelunasan')->disabled(),
-                    //         ])
-                    //     ])
-                    //     ->visible(fn($record) => !empty($record?->opsi_pembayaran)),
-                    Section::make('Items')
-                        ->schema([
-                            Repeater::make('items')->relationship()->schema([
+                        Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
+                    ]),
+                    Section::make('Hasil Survei Harga')->schema([
+                        Repeater::make('items')->relationship()->schema([
+                            TextInput::make('nama_barang')->disabled()->columnSpanFull(),
+                            Repeater::make('surveiHargas')->label('Detail Harga Pembanding')->relationship()->schema([
                                 Grid::make(3)->schema([
-                                    TextInput::make('kategori_barang')->disabled(),
-                                    TextInput::make('nama_barang')->disabled()->columnSpan(2),
-                                    TextInput::make('kuantitas')->disabled(),
+                                    TextInput::make('tipe_survei')->disabled(),
+                                    TextInput::make('nama_vendor')->label('Vendor/Link')->disabled(),
+                                    TextInput::make('harga')->prefix('Rp')->disabled(),
                                 ]),
-                                Textarea::make('spesifikasi')->disabled()->columnSpanFull(),
-                                Textarea::make('justifikasi')->disabled()->columnSpanFull(),
-                            ])->columns(2)->disabled(),
-                        ]),
+                                // ... (Detail pembayaran lainnya)
+                            ])->disabled()->columns(1),
+                        ])->columnSpanFull()->disabled(),
+                    ]),
                 ]),
 
             Action::make('submit_budget_review')
