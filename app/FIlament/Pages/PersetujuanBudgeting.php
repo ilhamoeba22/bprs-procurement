@@ -2,11 +2,9 @@
 
 namespace App\Filament\Pages;
 
-use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
-use Filament\Tables\Table;
 use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
 use Illuminate\Support\Facades\Auth;
@@ -37,7 +35,6 @@ class PersetujuanBudgeting extends Page implements HasTable
     {
         return 'Daftar Pengajuan (Persetujuan Budgeting)';
     }
-
     public static function canAccess(): bool
     {
         return Auth::user()->hasAnyRole(['Tim Budgeting', 'Super Admin']);
@@ -45,7 +42,20 @@ class PersetujuanBudgeting extends Page implements HasTable
 
     protected function getTableQuery(): Builder
     {
-        return Pengajuan::query()->with(['pemohon.divisi'])->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET);
+        $user = Auth::user();
+        $query = Pengajuan::query()->with(['pemohon.divisi', 'items.surveiHargas']);
+
+        if (! $user->hasRole('Super Admin')) {
+            $query->where(function (Builder $q) use ($user) {
+                $q->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET)
+                    ->orWhere('budget_approved_by', $user->id_user);
+            });
+        } else {
+            $query->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET)
+                ->orWhereNotNull('budget_approved_by');
+        }
+
+        return $query->latest();
     }
 
     protected function getTableColumns(): array
@@ -53,8 +63,19 @@ class PersetujuanBudgeting extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
-            BadgeColumn::make('status'),
+            BadgeColumn::make('status')->label('Status Saat Ini'),
+            BadgeColumn::make('tindakan_saya')
+                ->label('Tindakan Saya')
+                ->state(function (Pengajuan $record): string {
+                    if ($record->budget_approved_by !== Auth::id()) {
+                        return 'Menunggu Aksi';
+                    }
+                    return 'Sudah Direview';
+                })
+                ->color(fn(string $state): string => match ($state) {
+                    'Sudah Direview' => 'success',
+                    default => 'gray',
+                }),
         ];
     }
 
@@ -78,15 +99,15 @@ class PersetujuanBudgeting extends Page implements HasTable
                                 Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
                             ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
                         ]),
-                    Section::make('Opsi Pembayaran (Hasil Survei GA)')
-                        ->schema([
-                            Grid::make(3)->schema([
-                                TextInput::make('opsi_pembayaran')->label('Opsi Pembayaran')->disabled(),
-                                DatePicker::make('tanggal_dp')->label('Tanggal DP')->disabled(),
-                                DatePicker::make('tanggal_pelunasan')->label('Tanggal Pelunasan')->disabled(),
-                            ])
-                        ])
-                        ->visible(fn($record) => !empty($record?->opsi_pembayaran)),
+                    // Section::make('Opsi Pembayaran (Hasil Survei GA)')
+                    //     ->schema([
+                    //         Grid::make(3)->schema([
+                    //             TextInput::make('opsi_pembayaran')->label('Opsi Pembayaran')->disabled(),
+                    //             DatePicker::make('tanggal_dp')->label('Tanggal DP')->disabled(),
+                    //             DatePicker::make('tanggal_pelunasan')->label('Tanggal Pelunasan')->disabled(),
+                    //         ])
+                    //     ])
+                    //     ->visible(fn($record) => !empty($record?->opsi_pembayaran)),
                     Section::make('Items')
                         ->schema([
                             Repeater::make('items')->relationship()->schema([
@@ -104,12 +125,16 @@ class PersetujuanBudgeting extends Page implements HasTable
             Action::make('submit_budget_review')
                 ->label('Submit Review Budget')->color('primary')->icon('heroicon-o-pencil-square')
                 ->form(function (Pengajuan $record) {
-                    // Hitung total nilai untuk masing-masing skenario
                     $totalPengadaan = $record->items->reduce(function ($carry, $item) {
-                        return $carry + (($item->surveiHargas()->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $item->kuantitas);
+                        // Menggunakan koleksi yang sudah di-load, bukan query baru
+                        $minHarga = $item->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga');
+                        return $carry + (($minHarga ?? 0) * $item->kuantitas);
                     }, 0);
+
                     $totalPerbaikan = $record->items->reduce(function ($carry, $item) {
-                        return $carry + (($item->surveiHargas()->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $item->kuantitas);
+                        // Menggunakan koleksi yang sudah di-load, bukan query baru
+                        $minHarga = $item->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga');
+                        return $carry + (($minHarga ?? 0) * $item->kuantitas);
                     }, 0);
 
                     return [
@@ -135,9 +160,11 @@ class PersetujuanBudgeting extends Page implements HasTable
                         'budget_status_perbaikan' => $data['budget_status_perbaikan'],
                         'budget_catatan_perbaikan' => $data['budget_catatan_perbaikan'],
                         'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA,
+                        'budget_approved_by' => Auth::id(),
                     ]);
                     Notification::make()->title('Review budget berhasil disubmit ke Kadiv GA')->success()->send();
-                }),
+                })
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET),
         ];
     }
 }

@@ -33,10 +33,7 @@ class Pengajuan extends Model
         'budget_approved_by',
         'kadiv_ga_approved_by',
         'direktur_operasional_approved_by',
-        'direktur_utama_approved_by',
-        'opsi_pembayaran',
-        'tanggal_dp',
-        'tanggal_pelunasan'
+        'direktur_utama_approved_by'
     ];
     // Definisi konstanta untuk status agar konsisten
     public const STATUS_DRAFT = 'Draft';
