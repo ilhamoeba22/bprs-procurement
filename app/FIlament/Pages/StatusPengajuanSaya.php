@@ -84,19 +84,11 @@ class StatusPengajuanSaya extends Page implements HasTable
                             ]),
                             Textarea::make('catatan_revisi')->label('Catatan Approval/Revisi')->disabled()->columnSpanFull(),
 
-                            // Menampilkan Rekomendasi IT jika ada
                             Grid::make(2)->schema([
                                 TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
                                 TextInput::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
                             ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
 
-                            // Menampilkan Hasil Budget Control jika ada
-                            // Grid::make(2)->schema([
-                            //     TextInput::make('budget_status')->label('Status Budget')->disabled(),
-                            //     TextInput::make('budget_catatan')->label('Catatan Budget')->disabled(),
-                            // ])->visible(fn($record) => !empty($record?->budget_status)),
-
-                            // Menampilkan Keputusan Kadiv GA jika ada
                             Grid::make(2)->schema([
                                 TextInput::make('kadiv_ga_decision_type')->label('Keputusan Tipe dari Kadiv GA')->disabled(),
                                 TextInput::make('kadiv_ga_catatan')->label('Keputusan Catatan dari Kadiv GA')->disabled(),
@@ -118,7 +110,7 @@ class StatusPengajuanSaya extends Page implements HasTable
                             ->schema([
                                 Grid::make(3)->schema([
                                     TextInput::make('kategori_barang')->disabled(),
-                                    TextInput::make('nama_barang')->disabled()->columnSpan(2),
+                                    TextInput::make('nama_barang')->disabled(),
                                     TextInput::make('kuantitas')->disabled(),
                                 ]),
                                 Textarea::make('spesifikasi')->disabled()->columnSpanFull(),

@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
+use App\Models\SurveiHarga;
 use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
 use Illuminate\Support\Facades\Auth;
@@ -35,6 +36,7 @@ class PersetujuanBudgeting extends Page implements HasTable
     {
         return 'Daftar Pengajuan (Persetujuan Budgeting)';
     }
+
     public static function canAccess(): bool
     {
         return Auth::user()->hasAnyRole(['Tim Budgeting', 'Super Admin']);
@@ -82,51 +84,93 @@ class PersetujuanBudgeting extends Page implements HasTable
     protected function getTableActions(): array
     {
         return [
-            // === PERBAIKAN PADA LIHAT DETAIL ===
             ViewAction::make()->label('Detail')
+                ->modalHeading('') // Menyembunyikan tulisan "View pengajuan"
                 ->mountUsing(function (Form $form, Pengajuan $record) {
                     $record->load(['items', 'items.surveiHargas']);
-                    $record->estimasi_pengadaan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
-                    $record->estimasi_perbaikan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
-                    $form->fill($record->toArray());
+                    $data = $record->toArray();
+
+                    // Ambil item_ids dari pengajuan
+                    $itemIds = $record->items->pluck('id_item')->toArray();
+
+                    // Hitung estimasi dan nama vendor menggunakan SurveiHarga
+                    $pengadaan = SurveiHarga::whereIn('id_item', $itemIds)
+                        ->where('tipe_survei', 'Pengadaan')
+                        ->orderBy('harga', 'asc')
+                        ->first();
+                    $perbaikan = SurveiHarga::whereIn('id_item', $itemIds)
+                        ->where('tipe_survei', 'Perbaikan')
+                        ->orderBy('harga', 'asc')
+                        ->first();
+
+                    // Hitung total estimasi
+                    $totalPengadaan = $record->items->reduce(function ($carry, $item) {
+                        $minHarga = SurveiHarga::where('id_item', $item->id_item)
+                            ->where('tipe_survei', 'Pengadaan')
+                            ->min('harga');
+                        return $carry + (($minHarga ?? 0) * $item->kuantitas);
+                    }, 0);
+                    $totalPerbaikan = $record->items->reduce(function ($carry, $item) {
+                        $minHarga = SurveiHarga::where('id_item', $item->id_item)
+                            ->where('tipe_survei', 'Perbaikan')
+                            ->min('harga');
+                        return $carry + (($minHarga ?? 0) * $item->kuantitas);
+                    }, 0);
+
+                    $data['estimasi_pengadaan'] = 'Rp ' . number_format($totalPengadaan, 0, ',', '.');
+                    $data['estimasi_perbaikan'] = 'Rp ' . number_format($totalPerbaikan, 0, ',', '.');
+                    $data['nama_vendor_pengadaan'] = $pengadaan ? $pengadaan->nama_vendor : 'Tidak tersedia';
+                    $data['nama_vendor_perbaikan'] = $perbaikan ? $perbaikan->nama_vendor : 'Tidak tersedia';
+                    $data['budget_status_pengadaan'] = $record->budget_status_pengadaan ?? 'Tidak tersedia';
+                    $data['budget_status_perbaikan'] = $record->budget_status_perbaikan ?? 'Tidak tersedia';
+
+                    \Log::info('Mapped data for form:', $data);
+                    $form->fill($data);
                 })
                 ->form([
                     Section::make('Detail Pengajuan')->schema([
                         Grid::make(2)->schema([
                             TextInput::make('kode_pengajuan')->disabled(),
                             TextInput::make('status')->disabled(),
-                            TextInput::make('estimasi_pengadaan')->label('Estimasi Total Pengadaan')->disabled(),
-                            TextInput::make('estimasi_perbaikan')->label('Estimasi Total Perbaikan')->disabled(),
                         ]),
                         Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
+                        // Repeater untuk items tanpa label "items"
+                        Repeater::make('items')
+                            ->relationship()
+                            ->label('') // Menyembunyikan label "items"
+                            ->schema([
+                                Grid::make(3)->schema([
+                                    TextInput::make('kategori_barang')->label('Kategori Barang')->disabled(),
+                                    TextInput::make('nama_barang')->label('Nama Barang')->disabled()->columnSpan(2),
+                                    TextInput::make('kuantitas')->label('Kuantitas')->disabled(),
+                                ]),
+                            ])->disabled()->columnSpanFull(),
                     ]),
                     Section::make('Hasil Survei Harga')->schema([
-                        Repeater::make('items')->relationship()->schema([
-                            TextInput::make('nama_barang')->disabled()->columnSpanFull(),
-                            Repeater::make('surveiHargas')->label('Detail Harga Pembanding')->relationship()->schema([
-                                Grid::make(3)->schema([
-                                    TextInput::make('tipe_survei')->disabled(),
-                                    TextInput::make('nama_vendor')->label('Vendor/Link')->disabled(),
-                                    TextInput::make('harga')->prefix('Rp')->disabled(),
-                                ]),
-                                // ... (Detail pembayaran lainnya)
-                            ])->disabled()->columns(1),
-                        ])->columnSpanFull()->disabled(),
+                        Grid::make(3)->schema([
+                            TextInput::make('nama_vendor_pengadaan')->label('Vendor Pengadaan')->disabled()->default('Tidak tersedia'),
+                            TextInput::make('estimasi_pengadaan')->label('Estimasi Total Pengadaan')->prefix('Rp')->disabled()->default('Tidak tersedia'),
+                            TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled()->default('Tidak tersedia'),
+                            TextInput::make('nama_vendor_perbaikan')->label('Vendor Perbaikan')->disabled()->default('Tidak tersedia'),
+                            TextInput::make('estimasi_perbaikan')->label('Estimasi Total Perbaikan')->prefix('Rp')->disabled()->default('Tidak tersedia'),
+                            TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled()->default('Tidak tersedia'),
+                        ]),
                     ]),
                 ]),
-
             Action::make('submit_budget_review')
                 ->label('Submit Review Budget')->color('primary')->icon('heroicon-o-pencil-square')
                 ->form(function (Pengajuan $record) {
                     $totalPengadaan = $record->items->reduce(function ($carry, $item) {
-                        // Menggunakan koleksi yang sudah di-load, bukan query baru
-                        $minHarga = $item->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga');
+                        $minHarga = SurveiHarga::where('id_item', $item->id_item)
+                            ->where('tipe_survei', 'Pengadaan')
+                            ->min('harga');
                         return $carry + (($minHarga ?? 0) * $item->kuantitas);
                     }, 0);
 
                     $totalPerbaikan = $record->items->reduce(function ($carry, $item) {
-                        // Menggunakan koleksi yang sudah di-load, bukan query baru
-                        $minHarga = $item->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga');
+                        $minHarga = SurveiHarga::where('id_item', $item->id_item)
+                            ->where('tipe_survei', 'Perbaikan')
+                            ->min('harga');
                         return $carry + (($minHarga ?? 0) * $item->kuantitas);
                     }, 0);
 
@@ -134,14 +178,21 @@ class PersetujuanBudgeting extends Page implements HasTable
                         Section::make('Review Budget untuk Skenario PENGADAAN')
                             ->description('Total Estimasi: Rp ' . number_format($totalPengadaan, 0, ',', '.'))
                             ->schema([
-                                Select::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->options(['Budget Tersedia' => 'Budget Tersedia', 'Budget Habis' => 'Budget Habis', 'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB'])->required(),
+                                Select::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->options([
+                                    'Budget Tersedia' => 'Budget Tersedia',
+                                    'Budget Habis' => 'Budget Habis',
+                                    'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB'
+                                ])->required(),
                                 Textarea::make('budget_catatan_pengadaan')->label('Catatan (Opsional)'),
                             ]),
-
                         Section::make('Review Budget untuk Skenario PERBAIKAN')
                             ->description('Total Estimasi: Rp ' . number_format($totalPerbaikan, 0, ',', '.'))
                             ->schema([
-                                Select::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->options(['Budget Tersedia' => 'Budget Tersedia', 'Budget Habis' => 'Budget Habis', 'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB'])->required(),
+                                Select::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->options([
+                                    'Budget Tersedia' => 'Budget Tersedia',
+                                    'Budget Habis' => 'Budget Habis',
+                                    'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB'
+                                ])->required(),
                                 Textarea::make('budget_catatan_perbaikan')->label('Catatan (Opsional)'),
                             ]),
                     ];
