@@ -48,7 +48,7 @@ class PencairanDanaOperasional extends Page implements HasTable
     protected function getTableColumns(): array
     {
         return [
-            TextColumn::make('kode_pengajuan')->label('Kode Pengajuan')->searchable(),
+            TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
             BadgeColumn::make('status')->color('info'),

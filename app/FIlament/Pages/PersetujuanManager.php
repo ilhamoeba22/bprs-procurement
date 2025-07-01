@@ -4,7 +4,6 @@ namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
-use Filament\Tables\Table;
 use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
 use Illuminate\Support\Facades\Auth;
@@ -17,10 +16,9 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
-use Filament\Forms\Components\DatePicker;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Tables\Concerns\InteractsWithTable;
-use Filament\Forms\Components\Textarea as FormsTextarea;
+use Filament\Forms;
 
 class PersetujuanManager extends Page implements HasTable
 {
@@ -56,35 +54,26 @@ class PersetujuanManager extends Page implements HasTable
     protected function getTableColumns(): array
     {
         return [
-            TextColumn::make('kode_pengajuan')->label('Kode Pengajuan')->searchable(),
+            TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
+            TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
             BadgeColumn::make('status'),
-
-            // === KOLOM BARU DI SINI ===
-            // TextColumn::make('tindakan_saya')
-            //     ->label('Tindakan Saya')
-            //     ->state(function (Pengajuan $record): string {
-            //         if ($record->manager_approved_by !== Auth::id()) {
-            //             return 'Menunggu Aksi';
-            //         }
-
-            //         if ($record->status === Pengajuan::STATUS_DITOLAK_MANAGER) {
-            //             return 'Ditolak';
-            //         }
-
-            //         return 'Disetujui';
-            //     })
-            //     ->badge()
-            //     ->color(function (Pengajuan $record): string {
-            //         if ($record->manager_approved_by !== Auth::id()) {
-            //             return 'gray';
-            //         }
-            //         if ($record->status === Pengajuan::STATUS_DITOLAK_MANAGER) {
-            //             return 'danger';
-            //         }
-            //         return 'success';
-            //     }),
-
+            BadgeColumn::make('tindakan_saya')
+                ->label('Tindakan Saya')
+                ->state(function (Pengajuan $record): string {
+                    if (!$record->manager_approved_by) {
+                        return 'Menunggu Aksi';
+                    }
+                    if ($record->status === Pengajuan::STATUS_DITOLAK_MANAGER) {
+                        return 'Ditolak';
+                    }
+                    return 'Disetujui';
+                })
+                ->color(fn(string $state): string => match ($state) {
+                    'Disetujui' => 'success',
+                    'Ditolak' => 'danger',
+                    default => 'gray',
+                }),
             TextColumn::make('created_at')->label('Tanggal Dibuat')->dateTime('d M Y H:i'),
         ];
     }
@@ -93,40 +82,41 @@ class PersetujuanManager extends Page implements HasTable
     {
         return [
             ViewAction::make()->label('Detail')
+                ->modalHeading('')
+                ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
+                    $record->load(['items', 'items.surveiHargas']);
+                    $record->estimasi_pengadaan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $record->estimasi_perbaikan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $form->fill($record->toArray());
+                })
                 ->form([
                     Section::make('Detail Pengajuan')
                         ->schema([
                             Grid::make(3)->schema([
                                 TextInput::make('kode_pengajuan')->disabled(),
                                 TextInput::make('status')->disabled(),
-                                TextInput::make('total_nilai')->prefix('Rp')->label('Total Nilai')->disabled(),
+                                TextInput::make('total_nilai')->label('Total Nilai'),
                             ]),
-                            FormsTextarea::make('catatan_revisi')->label('Catatan Approval/Revisi')->disabled()->columnSpanFull(),
-                        ]),
-                    Section::make('Opsi Pembayaran (Hasil Survei GA)')
-                        ->schema([
-                            Grid::make(3)->schema([
-                                TextInput::make('opsi_pembayaran')->label('Opsi Pembayaran')->disabled(),
-                                DatePicker::make('tanggal_dp')->label('Tanggal DP')->disabled(),
-                                DatePicker::make('tanggal_pelunasan')->label('Tanggal Pelunasan')->disabled(),
-                            ])
-                        ])
-                        ->visible(fn($record) => !empty($record?->opsi_pembayaran)),
-                    Section::make('Items')
-                        ->schema([
-                            Repeater::make('items')
-                                ->relationship()
-                                ->schema([
-                                    Grid::make(3)->schema([
-                                        TextInput::make('kategori_barang')->disabled(),
-                                        TextInput::make('nama_barang')->disabled()->columnSpan(2),
-                                        TextInput::make('kuantitas')->disabled(),
-                                    ]),
-                                    FormsTextarea::make('spesifikasi')->disabled()->columnSpanFull(),
-                                    FormsTextarea::make('justifikasi')->disabled()->columnSpanFull(),
-                                ])
-                                ->columns(2)
-                                ->disabled(),
+                            Repeater::make('items')->relationship()->label('')->schema([
+                                Grid::make(6)->schema([
+                                    TextInput::make('kategori_barang')->disabled()->columnSpan(2),
+                                    TextInput::make('nama_barang')->disabled()->columnSpan(3),
+                                    TextInput::make('kuantitas')->disabled()->columnSpan(1),
+                                ]),
+                                Grid::make(2)->schema([
+                                    Textarea::make('spesifikasi')->disabled(),
+                                    Textarea::make('justifikasi')->disabled(),
+                                ]),
+                            ])->columns(2)->disabled()->addActionLabel('Tambah Barang'),
+                            Grid::make(2)->schema([
+                                TextInput::make('estimasi_pengadaan')->label('Estimasi Biaya Pengadaan')->disabled(),
+                                TextInput::make('estimasi_perbaikan')->label('Estimasi Biaya Perbaikan')->disabled(),
+                                TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled(),
+                                TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled(),
+                                Textarea::make('budget_catatan_pengadaan')->label('Catatan Budget Pengadaan')->disabled(),
+                                Textarea::make('budget_catatan_perbaikan')->label('Catatan Budget Perbaikan')->disabled(),
+                                Textarea::make('catatan_revisi')->label('Riwayat Catatan Approval')->disabled()->columnSpanFull(),
+                            ]),
                         ]),
                 ]),
             Action::make('approve')

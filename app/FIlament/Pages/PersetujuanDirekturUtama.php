@@ -22,7 +22,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\Section as InfolistSection;
-use Filament\Forms\Form;
+use Filament\Forms;
 
 class PersetujuanDirekturUtama extends Page implements HasTable
 {
@@ -43,18 +43,48 @@ class PersetujuanDirekturUtama extends Page implements HasTable
         return Auth::user()->hasAnyRole(['Direktur Utama', 'Super Admin']);
     }
 
+    // PERBAIKAN 1: Mengubah Kueri untuk Menampilkan Riwayat
     protected function getTableQuery(): Builder
     {
-        return Pengajuan::query()->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA);
+        $user = Auth::user();
+        $query = Pengajuan::query()->with(['pemohon']);
+
+        if (! $user->hasRole('Super Admin')) {
+            $query->where(function (Builder $q) use ($user) {
+                $q->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA)
+                    ->orWhere('direktur_utama_approved_by', $user->id_user);
+            });
+        } else {
+            $query->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA)
+                ->orWhereNotNull('direktur_utama_approved_by');
+        }
+
+        return $query->latest();
     }
 
     protected function getTableColumns(): array
     {
         return [
-            TextColumn::make('kode_pengajuan')->label('Kode Pengajuan')->searchable(),
+            TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
-            BadgeColumn::make('status'),
+            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
+            BadgeColumn::make('status')->label('Status Saat Ini'),
+            BadgeColumn::make('tindakan_saya')
+                ->label('Tindakan Saya')
+                ->state(function (Pengajuan $record): string {
+                    if (!$record->direktur_utama_approved_by) {
+                        return 'Menunggu Aksi';
+                    }
+                    if ($record->status === Pengajuan::STATUS_DITOLAK_DIREKTUR_UTAMA) {
+                        return 'Ditolak';
+                    }
+                    return 'Disetujui';
+                })
+                ->color(fn(string $state): string => match ($state) {
+                    'Disetujui' => 'success',
+                    'Ditolak' => 'danger',
+                    default => 'gray',
+                }),
             TextColumn::make('created_at')->label('Tanggal Dibuat')->dateTime('d M Y H:i'),
         ];
     }
@@ -63,51 +93,53 @@ class PersetujuanDirekturUtama extends Page implements HasTable
     {
         return [
             ViewAction::make()->label('Detail')
-                ->mountUsing(fn(Form $form, Pengajuan $record) => $form->fill($record->load('items')->toArray()))
+                ->modalHeading('')
+                ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
+                    $record->load(['items', 'items.surveiHargas']);
+                    $record->estimasi_pengadaan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $record->estimasi_perbaikan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $form->fill($record->toArray());
+                })
                 ->form([
                     Section::make('Detail Pengajuan')
                         ->schema([
                             Grid::make(3)->schema([
                                 TextInput::make('kode_pengajuan')->disabled(),
                                 TextInput::make('status')->disabled(),
-                                TextInput::make('total_nilai')->prefix('Rp')->label('Total Nilai')->disabled(),
+                                TextInput::make('total_nilai')->label('Total Nilai'),
                             ]),
-                            Textarea::make('catatan_revisi')->label('Catatan Approval/Revisi')->disabled()->columnSpanFull(),
-
-                            // Menampilkan semua catatan dari tahap sebelumnya
-                            Grid::make(2)->schema([
-                                TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
-                                Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
-                            ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
-
-                            Grid::make(2)->schema([
-                                TextInput::make('budget_status')->label('Status Budget')->disabled(),
-                                Textarea::make('budget_catatan')->label('Catatan Budget')->disabled(),
-                            ])->visible(fn($record) => !empty($record?->budget_status)),
-
-                            Grid::make(2)->schema([
-                                TextInput::make('kadiv_ga_decision_type')->label('Keputusan Tipe dari Kadiv GA')->disabled(),
-                                Textarea::make('kadiv_ga_catatan')->label('Keputusan Catatan dari Kadiv GA')->disabled(),
-                            ])->visible(fn($record) => !empty($record?->kadiv_ga_decision_type)),
-                        ]),
-
-                    Section::make('Items')->schema([
-                        Repeater::make('items')
-                            ->relationship()
-                            ->schema([
-                                Grid::make(3)->schema([
-                                    TextInput::make('kategori_barang')->disabled(),
-                                    TextInput::make('nama_barang')->disabled()->columnSpan(2),
-                                    TextInput::make('kuantitas')->disabled(),
+                            Repeater::make('items')->relationship()->label('')->schema([
+                                Grid::make(6)->schema([
+                                    TextInput::make('kategori_barang')->disabled()->columnSpan(2),
+                                    TextInput::make('nama_barang')->disabled()->columnSpan(3),
+                                    TextInput::make('kuantitas')->disabled()->columnSpan(1),
                                 ]),
-                                Textarea::make('spesifikasi')->disabled()->columnSpanFull(),
-                                Textarea::make('justifikasi')->disabled()->columnSpanFull(),
-                            ])->columns(2)->disabled(),
-                    ]),
+                                Grid::make(2)->schema([
+                                    Textarea::make('spesifikasi')->disabled(),
+                                    Textarea::make('justifikasi')->disabled(),
+                                ]),
+                            ])->columns(2)->disabled()->addActionLabel('Tambah Barang'),
+                            Grid::make(2)->schema([
+                                TextInput::make('estimasi_pengadaan')->label('Estimasi Biaya Pengadaan')->disabled(),
+                                TextInput::make('estimasi_perbaikan')->label('Estimasi Biaya Perbaikan')->disabled(),
+                                TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled(),
+                                TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled(),
+                                Textarea::make('budget_catatan_pengadaan')->label('Catatan Budget Pengadaan')->disabled(),
+                                Textarea::make('budget_catatan_perbaikan')->label('Catatan Budget Perbaikan')->disabled(),
+                                Textarea::make('catatan_revisi')->label('Riwayat Catatan Approval')->disabled()->columnSpanFull(),
+                            ]),
+                        ]),
                 ]),
             Action::make('approve')
                 ->label('Setujui')->color('success')->icon('heroicon-o-check-circle')->requiresConfirmation()
-                ->action(fn(Pengajuan $record) => $record->update(['status' => Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA])),
+                ->action(function (Pengajuan $record) {
+                    $record->update([
+                        'status' => Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                        'direktur_utama_approved_by' => Auth::id(),
+                    ]);
+                    Notification::make()->title('Pengajuan disetujui')->success()->send();
+                })
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA),
             Action::make('reject')
                 ->label('Tolak')->color('danger')->icon('heroicon-o-x-circle')->requiresConfirmation()
                 ->form([Textarea::make('catatan_revisi')->label('Alasan Penolakan')->required(),])
@@ -115,9 +147,11 @@ class PersetujuanDirekturUtama extends Page implements HasTable
                     $record->update([
                         'status' => Pengajuan::STATUS_DITOLAK_DIREKTUR_UTAMA,
                         'catatan_revisi' => $record->catatan_revisi . "\n\n[Ditolak oleh Direktur Utama: " . Auth::user()->nama_user . "]\n" . $data['catatan_revisi'],
+                        'direktur_utama_approved_by' => Auth::id(),
                     ]);
                     Notification::make()->title('Pengajuan ditolak')->danger()->send();
-                }),
+                })
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA),
         ];
     }
 

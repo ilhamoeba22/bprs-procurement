@@ -68,6 +68,7 @@ class SurveiHargaGA extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
+            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
             BadgeColumn::make('status')->label('Status Saat Ini'),
             BadgeColumn::make('tindakan_saya')
                 ->label('Keterangan')
@@ -89,29 +90,37 @@ class SurveiHargaGA extends Page implements HasTable
         return [
             ViewAction::make()->label('Detail')
                 ->modalHeading('')
-                ->mountUsing(fn(Forms\Form $form, Pengajuan $record) => $form->fill($record->load('items', 'items.surveiHargas')->toArray()))
-                ->form([
+                ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
+                    $record->load(['items', 'items.surveiHargas']);
+                    $record->estimasi_pengadaan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $record->estimasi_perbaikan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $form->fill($record->toArray());
+                })->form([
                     Section::make('Detail Pengajuan')->schema([
                         Grid::make(3)->schema([
                             TextInput::make('kode_pengajuan')->disabled(),
                             TextInput::make('status')->disabled(),
+                            TextInput::make('total_nilai')->label('Total Nilai'),
                         ]),
-                        Repeater::make('items')
-                            ->relationship()
-                            ->label('')
-                            ->schema([
-                                Grid::make(3)->schema([
-                                    TextInput::make('kategori_barang')->label('Kategori Barang')->disabled(),
-                                    TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
-                                    TextInput::make('kuantitas')->label('Kuantitas')->disabled(),
-                                ]),
-                            ])->disabled()->columnSpanFull(),
-                        Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
+                        Repeater::make('items')->relationship()->label('')->schema([
+                            Grid::make(3)->schema([
+                                TextInput::make('kategori_barang')->disabled(),
+                                TextInput::make('nama_barang')->disabled(),
+                                TextInput::make('kuantitas')->disabled(),
+                            ]),
+                            Grid::make(2)->schema([
+                                Textarea::make('spesifikasi')->disabled(),
+                                Textarea::make('justifikasi')->disabled(),
+                            ]),
+                        ])->columns(1)->disabled()->addActionLabel('Tambah Barang'),
                         Grid::make(2)->schema([
                             TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
                             Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
                         ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
+
+                        Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled(),
                     ]),
+
                     Section::make('Hasil Survei Harga')
                         ->schema([
                             Repeater::make('items')

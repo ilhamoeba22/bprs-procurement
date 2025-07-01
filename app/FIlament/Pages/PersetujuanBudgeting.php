@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use Log;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
@@ -85,15 +86,13 @@ class PersetujuanBudgeting extends Page implements HasTable
     {
         return [
             ViewAction::make()->label('Detail')
-                ->modalHeading('') // Menyembunyikan tulisan "View pengajuan"
+                ->modalHeading('')
                 ->mountUsing(function (Form $form, Pengajuan $record) {
                     $record->load(['items', 'items.surveiHargas']);
                     $data = $record->toArray();
 
-                    // Ambil item_ids dari pengajuan
                     $itemIds = $record->items->pluck('id_item')->toArray();
 
-                    // Hitung estimasi dan nama vendor menggunakan SurveiHarga
                     $pengadaan = SurveiHarga::whereIn('id_item', $itemIds)
                         ->where('tipe_survei', 'Pengadaan')
                         ->orderBy('harga', 'asc')
@@ -124,36 +123,41 @@ class PersetujuanBudgeting extends Page implements HasTable
                     $data['budget_status_pengadaan'] = $record->budget_status_pengadaan ?? 'Tidak tersedia';
                     $data['budget_status_perbaikan'] = $record->budget_status_perbaikan ?? 'Tidak tersedia';
 
-                    \Log::info('Mapped data for form:', $data);
+                    Log::info('Mapped data for form:', $data);
                     $form->fill($data);
                 })
                 ->form([
                     Section::make('Detail Pengajuan')->schema([
-                        Grid::make(2)->schema([
+                        Grid::make(3)->schema([
                             TextInput::make('kode_pengajuan')->disabled(),
                             TextInput::make('status')->disabled(),
+                            TextInput::make('total_nilai')->label('Total Nilai'),
                         ]),
-                        Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
-                        // Repeater untuk items tanpa label "items"
-                        Repeater::make('items')
-                            ->relationship()
-                            ->label('') // Menyembunyikan label "items"
-                            ->schema([
-                                Grid::make(3)->schema([
-                                    TextInput::make('kategori_barang')->label('Kategori Barang')->disabled(),
-                                    TextInput::make('nama_barang')->label('Nama Barang')->disabled()->columnSpan(2),
-                                    TextInput::make('kuantitas')->label('Kuantitas')->disabled(),
-                                ]),
-                            ])->disabled()->columnSpanFull(),
+                        Repeater::make('items')->relationship()->label('')->schema([
+                            Grid::make(3)->schema([
+                                TextInput::make('kategori_barang')->disabled(),
+                                TextInput::make('nama_barang')->disabled(),
+                                TextInput::make('kuantitas')->disabled(),
+                            ]),
+                            Grid::make(2)->schema([
+                                Textarea::make('spesifikasi')->disabled(),
+                                Textarea::make('justifikasi')->disabled(),
+                            ]),
+                        ])->columns(1)->disabled()->addActionLabel('Tambah Barang'),
+                        Grid::make(2)->schema([
+                            TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
+                            Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
+                        ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
                     ]),
                     Section::make('Hasil Survei Harga')->schema([
-                        Grid::make(3)->schema([
-                            TextInput::make('nama_vendor_pengadaan')->label('Vendor Pengadaan')->disabled()->default('Tidak tersedia'),
-                            TextInput::make('estimasi_pengadaan')->label('Estimasi Total Pengadaan')->prefix('Rp')->disabled()->default('Tidak tersedia'),
-                            TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled()->default('Tidak tersedia'),
-                            TextInput::make('nama_vendor_perbaikan')->label('Vendor Perbaikan')->disabled()->default('Tidak tersedia'),
-                            TextInput::make('estimasi_perbaikan')->label('Estimasi Total Perbaikan')->prefix('Rp')->disabled()->default('Tidak tersedia'),
-                            TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled()->default('Tidak tersedia'),
+                        Grid::make(2)->schema([
+                            TextInput::make('estimasi_pengadaan')->label('Estimasi Biaya Pengadaan')->disabled(),
+                            TextInput::make('estimasi_perbaikan')->label('Estimasi Biaya Perbaikan')->disabled(),
+                            TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled(),
+                            TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled(),
+                            Textarea::make('budget_catatan_pengadaan')->label('Catatan Budget Pengadaan')->disabled(),
+                            Textarea::make('budget_catatan_perbaikan')->label('Catatan Budget Perbaikan')->disabled(),
+                            Textarea::make('catatan_revisi')->label('Riwayat Catatan Approval')->disabled()->columnSpanFull(),
                         ]),
                     ]),
                 ]),
