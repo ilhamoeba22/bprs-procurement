@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class PengajuanItem extends Model
 {
@@ -31,5 +32,10 @@ class PengajuanItem extends Model
     public function surveiPerbaikan(): HasMany
     {
         return $this->surveiHargas()->where('tipe_survei', 'Perbaikan');
+    }
+
+    public function vendorFinal(): HasOne
+    {
+        return $this->hasOne(SurveiHarga::class, 'id_item')->where('is_final', 1);
     }
 }

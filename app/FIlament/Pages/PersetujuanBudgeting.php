@@ -64,8 +64,10 @@ class PersetujuanBudgeting extends Page implements HasTable
     protected function getTableColumns(): array
     {
         return [
-            TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
-            TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
+            TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->sortable()->searchable(),
+            TextColumn::make('pemohon.nama_user')->label('Pemohon')->sortable()->searchable(),
+            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi')->sortable()->searchable(),
+            TextColumn::make('total_nilai')->label('Total Nilai')->money('IDR')->sortable(),
             BadgeColumn::make('status')->label('Status Saat Ini'),
             BadgeColumn::make('tindakan_saya')
                 ->label('Keterangan')
@@ -116,12 +118,15 @@ class PersetujuanBudgeting extends Page implements HasTable
                         return $carry + (($minHarga ?? 0) * $item->kuantitas);
                     }, 0);
 
+                    // Tambahkan data tambahan untuk modal
                     $data['estimasi_pengadaan'] = 'Rp ' . number_format($totalPengadaan, 0, ',', '.');
                     $data['estimasi_perbaikan'] = 'Rp ' . number_format($totalPerbaikan, 0, ',', '.');
                     $data['nama_vendor_pengadaan'] = $pengadaan ? $pengadaan->nama_vendor : 'Tidak tersedia';
                     $data['nama_vendor_perbaikan'] = $perbaikan ? $perbaikan->nama_vendor : 'Tidak tersedia';
                     $data['budget_status_pengadaan'] = $record->budget_status_pengadaan ?? 'Tidak tersedia';
                     $data['budget_status_perbaikan'] = $record->budget_status_perbaikan ?? 'Tidak tersedia';
+                    $data['nama_divisi'] = $record->pemohon->divisi->nama_divisi ?? 'Tidak tersedia';
+                    $data['nama_barang'] = $record->items->pluck('nama_barang')->implode(', ') ?: 'Tidak tersedia';
 
                     Log::info('Mapped data for form:', $data);
                     $form->fill($data);
@@ -131,7 +136,7 @@ class PersetujuanBudgeting extends Page implements HasTable
                         Grid::make(3)->schema([
                             TextInput::make('kode_pengajuan')->disabled(),
                             TextInput::make('status')->disabled(),
-                            TextInput::make('total_nilai')->label('Total Nilai'),
+                            TextInput::make('total_nilai')->label('Total Nilai')->disabled(),
                         ]),
                         Repeater::make('items')->relationship()->label('')->schema([
                             Grid::make(3)->schema([
@@ -163,6 +168,7 @@ class PersetujuanBudgeting extends Page implements HasTable
                 ]),
             Action::make('submit_budget_review')
                 ->label('Submit Review Budget')->color('primary')->icon('heroicon-o-pencil-square')
+                ->modalHeading('')
                 ->form(function (Pengajuan $record) {
                     $totalPengadaan = $record->items->reduce(function ($carry, $item) {
                         $minHarga = SurveiHarga::where('id_item', $item->id_item)
@@ -179,7 +185,14 @@ class PersetujuanBudgeting extends Page implements HasTable
                     }, 0);
 
                     return [
-                        Section::make('Review Budget untuk Skenario PENGADAAN')
+                        Section::make('Detail Pengajuan')->schema([
+                            Grid::make(3)->schema([
+                                TextInput::make('kode_pengajuan')->label('Kode Pengajuan')->disabled()->default($record->kode_pengajuan),
+                                TextInput::make('nama_divisi')->label('Divisi')->disabled()->default($record->pemohon->divisi->nama_divisi ?? 'Tidak tersedia'),
+                                TextInput::make('nama_barang')->label('Nama Barang')->disabled()->default($record->items->pluck('nama_barang')->implode(', ') ?: 'Tidak tersedia'),
+                            ]),
+                        ]),
+                        Section::make('Review Budget Skenario Pengadaan')
                             ->description('Total Estimasi: Rp ' . number_format($totalPengadaan, 0, ',', '.'))
                             ->schema([
                                 Select::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->options([

@@ -5,8 +5,11 @@ namespace App\Filament\Pages;
 use Filament\Forms;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
+use App\Models\SurveiHarga;
+use Illuminate\Support\HtmlString;
 use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Repeater;
@@ -15,9 +18,10 @@ use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Notifications\Notification;
+use Filament\Forms\Components\Placeholder;
 use Filament\Tables\Concerns\InteractsWithTable;
 
 class PersetujuanDirekturOperasional extends Page implements HasTable
@@ -36,7 +40,7 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()->hasAnyRole(['Direktur Operasional', 'Super Admin']);
+        return Auth::user() && Auth::user()->hasAnyRole(['Direktur Operasional', 'Super Admin']);
     }
 
     // PERBAIKAN 1: Mengubah Kueri untuk Menampilkan Riwayat
@@ -45,7 +49,7 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
         $user = Auth::user();
         $query = Pengajuan::query()->with(['pemohon']);
 
-        if (! $user->hasRole('Super Admin')) {
+        if ($user && !$user->hasRole('Super Admin')) {
             $query->where(function (Builder $q) use ($user) {
                 $q->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL)
                     ->orWhere('direktur_operasional_approved_by', $user->id_user);
@@ -125,7 +129,79 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
                                 Textarea::make('catatan_revisi')->label('Riwayat Catatan Approval')->disabled()->columnSpanFull(),
                             ]),
                         ]),
+                    Section::make('Vendor Harga Final yang Di-approve')
+                        ->schema(function (Pengajuan $record) {
+                            Log::debug('Processing Vendor Harga Final for pengajuan ID: ' . $record->id_pengajuan);
+
+                            $firstItem = $record->items->first();
+                            if (!$firstItem) {
+                                return [
+                                    Placeholder::make('no_item_placeholder')
+                                        ->content('Tidak ada item terkait untuk pengajuan ini.')
+                                        ->columnSpanFull(),
+                                ];
+                            }
+
+                            $surveiHarga = SurveiHarga::where('id_item', $firstItem->id_item)
+                                ->where('is_final', 1)
+                                ->first();
+
+                            if (!$surveiHarga) {
+                                return [
+                                    Placeholder::make('no_final_vendor_placeholder')
+                                        ->content('Tidak ada data vendor final untuk id_item = ' . $firstItem->id_item . '.')
+                                        ->columnSpanFull(),
+                                ];
+                            }
+
+                            $data = [
+                                'nama_barang' => $surveiHarga->item->nama_barang ?? 'N/A',
+                                'nama_vendor' => $surveiHarga->nama_vendor ?? 'N/A',
+                                'harga' => 'Rp ' . number_format($surveiHarga->harga ?? 0, 0, ',', '.'),
+                                'metode_pembayaran' => $surveiHarga->metode_pembayaran ?? 'N/A',
+                            ];
+
+                            $content = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0; color: #333; background-color: #fff;">'
+                                . '<thead>'
+                                . '<tr style="background-color: #e0e0e0;">'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; text-align: left;">Label</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; text-align: left;">Detail</th>'
+                                . '</tr>'
+                                . '</thead>'
+                                . '<tbody>'
+                                . '<tr>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">Nama Barang</td>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_barang']) . '</td>'
+                                . '</tr>'
+                                . '<tr>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">Nama Vendor</td>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_vendor']) . '</td>'
+                                . '</tr>'
+                                . '<tr>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">Harga</td>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['harga']) . ' <span style="color: #888; font-size: 12px;">(harga per item)</span></td>'
+                                . '</tr>'
+                                . '<tr>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">Metode Pembayaran</td>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['metode_pembayaran']) . '</td>'
+                                . '</tr>'
+                                . '</tbody>'
+                                . '</table>';
+
+                            return [
+                                Placeholder::make('final_vendor_data')
+                                    ->content(new HtmlString($content))
+                                    ->columnSpanFull(),
+                            ];
+                        })
+                        ->visible(fn(Pengajuan $record) => in_array($record->status, [
+                            Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                            Pengajuan::STATUS_SUDAH_BAYAR,
+                            Pengajuan::STATUS_SELESAI,
+                        ]))
+                        ->columnSpanFull(),
                 ]),
+
             Action::make('approve')
                 ->label('Setujui')->color('success')->icon('heroicon-o-check-circle')->requiresConfirmation()
                 ->action(function (Pengajuan $record) {

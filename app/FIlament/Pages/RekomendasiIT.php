@@ -63,29 +63,44 @@ class RekomendasiIT extends Page implements HasTable
     {
         return [
             ViewAction::make()->label('Detail')
-                ->mountUsing(fn(Forms\Form $form, Pengajuan $record) => $form->fill($record->load(['items'])->toArray()))
-                ->form([
+                ->modalHeading('')
+                ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
+                    $record->load(['items', 'items.surveiHargas']);
+                    $record->estimasi_pengadaan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $record->estimasi_perbaikan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $form->fill($record->toArray());
+                })->form([
                     Section::make('Detail Pengajuan')->schema([
                         Grid::make(3)->schema([
                             TextInput::make('kode_pengajuan')->disabled(),
                             TextInput::make('status')->disabled(),
+                            TextInput::make('total_nilai')->label('Total Nilai'),
                         ]),
-                        Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled()->columnSpanFull(),
+                        Repeater::make('items')->relationship()->label('')->schema([
+                            Grid::make(3)->schema([
+                                TextInput::make('kategori_barang')->disabled(),
+                                TextInput::make('nama_barang')->disabled(),
+                                TextInput::make('kuantitas')->disabled(),
+                            ]),
+                            Grid::make(2)->schema([
+                                Textarea::make('spesifikasi')->disabled(),
+                                Textarea::make('justifikasi')->disabled(),
+                            ]),
+                        ])->columns(1)->disabled()->addActionLabel('Tambah Barang'),
                         Grid::make(2)->schema([
                             TextInput::make('rekomendasi_it_tipe')->label('Rekomendasi Tipe dari IT')->disabled(),
                             Textarea::make('rekomendasi_it_catatan')->label('Rekomendasi Catatan dari IT')->disabled(),
                         ])->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
-                    ]),
-                    Section::make('Items')->schema([
-                        Repeater::make('items')->relationship()->schema([
-                            Grid::make(3)->schema([
-                                TextInput::make('kategori_barang')->disabled(),
-                                TextInput::make('nama_barang')->disabled()->columnSpan(2),
-                                TextInput::make('kuantitas')->disabled(),
-                            ]),
-                            Textarea::make('spesifikasi')->disabled()->columnSpanFull(),
-                            Textarea::make('justifikasi')->disabled()->columnSpanFull(),
-                        ])->columns(2)->disabled(),
+
+                        Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled(),
+                        Grid::make(2)->schema([
+                            TextInput::make('estimasi_pengadaan')->label('Estimasi Biaya Pengadaan')->disabled(),
+                            TextInput::make('estimasi_perbaikan')->label('Estimasi Biaya Perbaikan')->disabled(),
+                            TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled(),
+                            TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled(),
+                            Textarea::make('budget_catatan_pengadaan')->label('Catatan Budget Pengadaan')->disabled(),
+                            Textarea::make('budget_catatan_perbaikan')->label('Catatan Budget Perbaikan')->disabled(),
+                        ]),
                     ]),
                 ]),
 

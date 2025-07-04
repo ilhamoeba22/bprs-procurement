@@ -18,7 +18,15 @@ class SurveiHarga extends Model
         'opsi_pembayaran',
         'nominal_dp',
         'tanggal_dp',
-        'tanggal_pelunasan'
+        'tanggal_pelunasan',
+        'metode_pembayaran',
+        'nama_rekening',
+        'no_rekening',
+        'nama_bank',
+        'bukti_dp',
+        'bukti_pelunasan',
+        'bukti_penyelesaian',
+        'is_final',
     ];
 
     public function item(): BelongsTo
