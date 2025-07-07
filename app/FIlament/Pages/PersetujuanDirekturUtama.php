@@ -35,7 +35,7 @@ class PersetujuanDirekturUtama extends Page implements HasTable
     protected static ?string $navigationIcon = 'heroicon-o-user-circle';
     protected static string $view = 'filament.pages.persetujuan-direktur-utama';
     protected static ?string $navigationLabel = 'Persetujuan Direktur Utama';
-    protected static ?int $navigationSort = 10;
+    protected static ?int $navigationSort = 11;
 
     public function getTitle(): string
     {
@@ -99,10 +99,14 @@ class PersetujuanDirekturUtama extends Page implements HasTable
             ViewAction::make()->label('Detail')
                 ->modalHeading('')
                 ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
-                    $record->load(['items', 'items.surveiHargas']);
-                    $record->estimasi_pengadaan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
-                    $record->estimasi_perbaikan = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
-                    $form->fill($record->toArray());
+                    $record->load(['items', 'items.surveiHargas', 'pemohon.divisi']);
+                    $data = $record->toArray();
+                    $data['estimasi_pengadaan'] = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $data['estimasi_perbaikan'] = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $data['nama_divisi'] = $record->pemohon->divisi->nama_divisi ?? 'Tidak tersedia';
+                    $data['nama_barang'] = $record->items->pluck('nama_barang')->implode(', ') ?: 'Tidak tersedia';
+                    $data['catatan_revisi'] = $record->catatan_revisi ?? 'Tidak ada riwayat catatan approval.';
+                    $form->fill($data);
                 })
                 ->form([
                     Section::make('Detail Pengajuan')
@@ -110,7 +114,9 @@ class PersetujuanDirekturUtama extends Page implements HasTable
                             Grid::make(3)->schema([
                                 TextInput::make('kode_pengajuan')->disabled(),
                                 TextInput::make('status')->disabled(),
-                                TextInput::make('total_nilai')->label('Total Nilai'),
+                                TextInput::make('total_nilai')->label('Total Nilai')->disabled(),
+                                TextInput::make('nama_divisi')->label('Divisi')->disabled(),
+                                TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
                             ]),
                             Repeater::make('items')->relationship()->label('')->schema([
                                 Grid::make(6)->schema([
@@ -123,15 +129,6 @@ class PersetujuanDirekturUtama extends Page implements HasTable
                                     Textarea::make('justifikasi')->disabled(),
                                 ]),
                             ])->columns(2)->disabled()->addActionLabel('Tambah Barang'),
-                            Grid::make(2)->schema([
-                                TextInput::make('estimasi_pengadaan')->label('Estimasi Biaya Pengadaan')->disabled(),
-                                TextInput::make('estimasi_perbaikan')->label('Estimasi Biaya Perbaikan')->disabled(),
-                                TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled(),
-                                TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled(),
-                                Textarea::make('budget_catatan_pengadaan')->label('Catatan Budget Pengadaan')->disabled(),
-                                Textarea::make('budget_catatan_perbaikan')->label('Catatan Budget Perbaikan')->disabled(),
-                                Textarea::make('catatan_revisi')->label('Riwayat Catatan Approval')->disabled()->columnSpanFull(),
-                            ]),
                         ]),
                     Section::make('Vendor Harga Final yang Di-approve')
                         ->schema(function (Pengajuan $record) {
@@ -163,33 +160,24 @@ class PersetujuanDirekturUtama extends Page implements HasTable
                                 'nama_vendor' => $surveiHarga->nama_vendor ?? 'N/A',
                                 'harga' => 'Rp ' . number_format($surveiHarga->harga ?? 0, 0, ',', '.'),
                                 'metode_pembayaran' => $surveiHarga->metode_pembayaran ?? 'N/A',
+                                'opsi_pembayaran' => $surveiHarga->opsi_pembayaran ?? 'N/A',
                             ];
 
                             $content = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0; color: #333; background-color: #fff;">'
-                                . '<thead>'
-                                . '<tr style="background-color: #e0e0e0;">'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; text-align: left;">Label</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; text-align: left;">Detail</th>'
-                                . '</tr>'
-                                . '</thead>'
-                                . '<tbody>'
-                                . '<tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">Nama Barang</td>'
+                                . '<thead><tr>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Nama Barang</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Nama Vendor</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Harga</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Metode Pembayaran</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Opsi Pembayaran</th>'
+                                . '</tr></thead>'
+                                . '<tbody><tr>'
                                 . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_barang']) . '</td>'
-                                . '</tr>'
-                                . '<tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">Nama Vendor</td>'
                                 . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_vendor']) . '</td>'
-                                . '</tr>'
-                                . '<tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">Harga</td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['harga']) . ' <span style="color: #888; font-size: 12px;">(harga per item)</span></td>'
-                                . '</tr>'
-                                . '<tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">Metode Pembayaran</td>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['harga']) . ' <span style="color: #888; font-size: 15px;">/ Item</span></td>'
                                 . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['metode_pembayaran']) . '</td>'
-                                . '</tr>'
-                                . '</tbody>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['opsi_pembayaran']) . '</td>'
+                                . '</tr></tbody>'
                                 . '</table>';
 
                             return [

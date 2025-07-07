@@ -249,13 +249,27 @@ class SurveiHargaGA extends Page implements HasTable
                                             ->label('Input Harga Pembanding (Pengadaan)')
                                             ->schema([
                                                 TextInput::make('nama_vendor')->label('Nama Vendor / Link')->required(),
-                                                TextInput::make('harga')->numeric()->required()->prefix('Rp'),
+                                                TextInput::make('harga')->numeric()->required()->prefix('Rp')->live(onBlur: true),
                                                 Radio::make('metode_pembayaran')->label('Metode Bayar')->options(['Transfer' => 'Transfer', 'Tunai' => 'Tunai'])->required()->live(),
                                                 TextInput::make('nama_rekening')->label('Nama Rekening')->required(fn($get) => $get('metode_pembayaran') === 'Transfer')->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
                                                 TextInput::make('no_rekening')->label('Nomor Rekening')->required(fn($get) => $get('metode_pembayaran') === 'Transfer')->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
                                                 TextInput::make('nama_bank')->label('Nama Bank')->required(fn($get) => $get('metode_pembayaran') === 'Transfer')->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
                                                 Radio::make('opsi_pembayaran')->label('Opsi Bayar')->options(['Bisa DP' => 'Bisa DP', 'Langsung Lunas' => 'Langsung Lunas'])->required()->live(),
-                                                TextInput::make('nominal_dp')->label('Nominal DP')->numeric()->prefix('Rp')->required()->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
+                                                TextInput::make('nominal_dp')->label('Nominal DP')->numeric()->prefix('Rp')
+                                                    ->required()
+                                                    ->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP')
+                                                    ->live(onBlur: true)
+                                                    ->rules([
+                                                        // FIX: Aturan 'lte:harga' dihapus dari sini
+                                                        function ($get) {
+                                                            return function (string $attribute, $value, \Closure $fail) use ($get) {
+                                                                $harga = (float) $get('harga');
+                                                                if ($value > $harga) {
+                                                                    $fail('Nominal DP tidak boleh lebih besar dari Harga.');
+                                                                }
+                                                            };
+                                                        },
+                                                    ]),
                                                 DatePicker::make('tanggal_dp')->label('Tgl. DP')->required()->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
                                                 DatePicker::make('tanggal_pelunasan')->label('Tgl. Lunas')->required()->visible(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas'])),
                                                 FileUpload::make('bukti_path')
@@ -273,13 +287,27 @@ class SurveiHargaGA extends Page implements HasTable
                                             ->label('Input Harga Pembanding (Perbaikan)')
                                             ->schema([
                                                 TextInput::make('nama_vendor')->label('Nama Vendor / Link')->required(),
-                                                TextInput::make('harga')->numeric()->required()->prefix('Rp'),
+                                                TextInput::make('harga')->numeric()->required()->prefix('Rp')->live(onBlur: true),
                                                 Radio::make('metode_pembayaran')->label('Metode Bayar')->options(['Transfer' => 'Transfer', 'Tunai' => 'Tunai'])->required()->live(),
                                                 TextInput::make('nama_rekening')->label('Nama Rekening')->required(fn($get) => $get('metode_pembayaran') === 'Transfer')->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
                                                 TextInput::make('no_rekening')->label('Nomor Rekening')->required(fn($get) => $get('metode_pembayaran') === 'Transfer')->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
                                                 TextInput::make('nama_bank')->label('Nama Bank')->required(fn($get) => $get('metode_pembayaran') === 'Transfer')->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
                                                 Radio::make('opsi_pembayaran')->label('Opsi Bayar')->options(['Bisa DP' => 'Bisa DP', 'Langsung Lunas' => 'Langsung Lunas'])->required()->live(),
-                                                TextInput::make('nominal_dp')->label('Nominal DP')->numeric()->prefix('Rp')->required()->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
+                                                TextInput::make('nominal_dp')->label('Nominal DP')->numeric()->prefix('Rp')
+                                                    ->required()
+                                                    ->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP')
+                                                    ->live(onBlur: true)
+                                                    ->rules([
+                                                        // FIX: Pastikan aturan di sini juga sudah benar (tanpa 'lte:harga')
+                                                        function ($get) {
+                                                            return function (string $attribute, $value, \Closure $fail) use ($get) {
+                                                                $harga = (float) $get('harga');
+                                                                if ($value > $harga) {
+                                                                    $fail('Nominal DP tidak boleh lebih besar dari Harga.');
+                                                                }
+                                                            };
+                                                        },
+                                                    ]),
                                                 DatePicker::make('tanggal_dp')->label('Tgl. DP')->required()->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
                                                 DatePicker::make('tanggal_pelunasan')->label('Tgl. Lunas')->required()->visible(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas'])),
                                                 FileUpload::make('bukti_path')
@@ -333,8 +361,6 @@ class SurveiHargaGA extends Page implements HasTable
                 })
                 ->modalWidth('6xl')
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_SURVEI_GA),
-
-
             Action::make('complete')
                 ->label('Selesai')
                 ->color('success')
@@ -405,153 +431,126 @@ class SurveiHargaGA extends Page implements HasTable
                 ->label('Edit')
                 ->color('warning')
                 ->icon('heroicon-o-pencil')
-                ->requiresConfirmation()
-                ->modalHeading('Edit Survei Harga')
-                ->modalDescription('Edit data pembayaran untuk vendor harga final.')
+                ->modalHeading('Edit Detail Vendor Final')
+                ->modalDescription('Hanya Metode Pembayaran dan Tanggal yang bisa diedit.')
                 ->form(function (Pengajuan $record) {
                     $items = $record->items->map(function ($item) {
                         $surveiHarga = $item->vendorFinal;
+                        if (!$surveiHarga) {
+                            return null;
+                        }
+
+                        // FIX 1: "Titipkan" ID unik dari survei harga ke dalam data form
                         return [
-                            'id_item' => $item->id_item,
+                            'id' => $surveiHarga->id, // INI KUNCINYA
                             'nama_barang' => $item->nama_barang,
-                            'survei_harga_id' => $surveiHarga ? $surveiHarga->id : null,
-                            'nama_vendor' => $surveiHarga ? $surveiHarga->nama_vendor : null,
-                            'harga' => $surveiHarga ? number_format($surveiHarga->harga, 2, ',', '.') : null,
-                            'metode_pembayaran' => $surveiHarga ? $surveiHarga->metode_pembayaran : null,
-                            'nama_rekening' => $surveiHarga ? $surveiHarga->nama_rekening : null,
-                            'no_rekening' => $surveiHarga ? $surveiHarga->no_rekening : null,
-                            'nama_bank' => $surveiHarga ? $surveiHarga->nama_bank : null,
-                            'opsi_pembayaran' => $surveiHarga ? $surveiHarga->opsi_pembayaran : null,
-                            'nominal_dp' => $surveiHarga ? number_format($surveiHarga->nominal_dp, 2, ',', '.') : null,
-                            'tanggal_dp' => $surveiHarga ? $surveiHarga->tanggal_dp : null,
-                            'tanggal_pelunasan' => $surveiHarga ? $surveiHarga->tanggal_pelunasan : null,
-                            'bukti_path' => $surveiHarga ? $surveiHarga->bukti_path : null,
-                            'bukti_dp' => $surveiHarga ? $surveiHarga->bukti_dp : null,
-                            'bukti_pelunasan' => $surveiHarga ? $surveiHarga->bukti_pelunasan : null,
-                            'bukti_penyelesaian' => $surveiHarga ? $surveiHarga->bukti_penyelesaian : null,
+                            'nama_vendor' => $surveiHarga->nama_vendor,
+                            'harga' => number_format($surveiHarga->harga, 0, ',', '.'),
+                            'opsi_pembayaran' => $surveiHarga->opsi_pembayaran,
+                            'metode_pembayaran' => $surveiHarga->metode_pembayaran,
+                            'nama_rekening' => $surveiHarga->nama_rekening,
+                            'no_rekening' => $surveiHarga->no_rekening,
+                            'nama_bank' => $surveiHarga->nama_bank,
+                            'tanggal_dp' => $surveiHarga->tanggal_dp,
+                            'tanggal_pelunasan' => $surveiHarga->tanggal_pelunasan,
                         ];
-                    })->filter(fn($item) => !empty($item['survei_harga_id']))->values();
+                    })->filter()->values();
 
                     if ($items->isEmpty()) {
-                        Log::warning('No final surveiHarga found for edit_survey in pengajuan ID: ' . $record->id_pengajuan);
                         return [
-                            Textarea::make('error_message')
-                                ->label('Kesalahan')
-                                ->default('Data survei harga tidak ditemukan. Harap periksa pengajuan atau hubungi administrator.')
-                                ->disabled()
-                                ->columnSpanFull(),
+                            Placeholder::make('error_message')
+                                ->content('Data vendor final tidak ditemukan untuk diedit.')
                         ];
                     }
 
                     return [
                         Repeater::make('items')
-                            ->label('Edit Vendor Final per Item')
-                            ->defaultItems($items->count())
-                            ->schema([
-                                Grid::make(1)->schema([
-                                    TextInput::make('nama_barang')
-                                        ->label('Nama Barang')
-                                        ->disabled(),
-                                    Grid::make(3)->schema([
-                                        TextInput::make('nama_vendor')
-                                            ->label('Nama Vendor / Link')
-                                            ->disabled(),
-                                        TextInput::make('harga')
-                                            ->label('Harga')
-                                            ->disabled()
-                                            ->prefix('Rp'),
-                                        Radio::make('metode_pembayaran')
-                                            ->label('Metode Bayar')
-                                            ->options(['Transfer' => 'Transfer', 'Tunai' => 'Tunai'])
-                                            ->required()
-                                            ->live(),
-                                        TextInput::make('nama_rekening')
-                                            ->label('Nama Rekening')
-                                            ->required(fn($get) => $get('metode_pembayaran') === 'Transfer')
-                                            ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
-                                        TextInput::make('no_rekening')
-                                            ->label('Nomor Rekening')
-                                            ->required(fn($get) => $get('metode_pembayaran') === 'Transfer')
-                                            ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
-                                        TextInput::make('nama_bank')
-                                            ->label('Nama Bank')
-                                            ->required(fn($get) => $get('metode_pembayaran') === 'Transfer')
-                                            ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
-                                        TextInput::make('opsi_pembayaran')
-                                            ->label('Opsi Bayar')
-                                            ->disabled(),
-                                        DatePicker::make('tanggal_dp')
-                                            ->label('Tanggal DP')
-                                            ->required(fn($get) => $get('opsi_pembayaran') === 'Bisa DP')
-                                            ->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
-                                        DatePicker::make('tanggal_pelunasan')
-                                            ->label('Tanggal Pelunasan')
-                                            ->required(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas']))
-                                            ->visible(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas'])),
-                                    ]),
-                                ]),
-                            ])
+                            ->label('Detail per Item')
                             ->default($items->toArray())
+                            ->disableItemCreation()->disableItemDeletion()->disableItemMovement()
+                            ->schema([
+                                // Field yang tidak bisa diedit (disabled)
+                                Grid::make(3)->schema([
+                                    TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
+                                    TextInput::make('nama_vendor')->label('Nama Vendor')->disabled(),
+                                    TextInput::make('harga')->label('Harga')->prefix('Rp')->disabled(),
+                                ]),
+                                // Field yang BISA diedit
+                                Section::make('Detail Pembayaran (Editable)')
+                                    ->schema([
+                                        Grid::make(3)->schema([
+                                            Radio::make('metode_pembayaran')
+                                                ->label('Metode Bayar')
+                                                ->options(['Transfer' => 'Transfer', 'Tunai' => 'Tunai'])
+                                                ->required()->live(),
+                                            TextInput::make('nama_rekening')
+                                                ->label('Nama Rekening')
+                                                ->required(fn($get) => $get('metode_pembayaran') === 'Transfer')
+                                                ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
+                                            TextInput::make('no_rekening')
+                                                ->label('Nomor Rekening')
+                                                ->required(fn($get) => $get('metode_pembayaran') === 'Transfer')
+                                                ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
+                                            TextInput::make('nama_bank')
+                                                ->label('Nama Bank')
+                                                ->required(fn($get) => $get('metode_pembayaran') === 'Transfer')
+                                                ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
+                                            DatePicker::make('tanggal_dp')
+                                                ->label('Tanggal DP')
+                                                ->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
+                                            DatePicker::make('tanggal_pelunasan')
+                                                ->label('Tanggal Pelunasan')
+                                                ->visible(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas'])),
+                                        ]),
+                                    ]),
+                            ])
                             ->columnSpanFull(),
                     ];
                 })
                 ->action(function (array $data, Pengajuan $record) {
-                    Log::info('Submitting edit survey for pengajuan ID: ' . $record->id_pengajuan, [
-                        'user_id' => Auth::id(),
-                        'received_data' => $data, // Log seluruh data yang diterima untuk debugging
-                    ]);
-
-                    $items = $record->items->map(function ($item) {
-                        return [
-                            'id_item' => $item->id_item,
-                            'surveiHarga' => $item->vendorFinal,
-                        ];
-                    })->filter(fn($item) => !empty($item['surveiHarga']))->values();
-
-                    if ($items->isEmpty()) {
-                        Notification::make()->title('Gagal: Data survei harga tidak ditemukan.')->danger()->send();
-                        Log::error('Failed to edit survey for pengajuan ID: ' . $record->id_pengajuan . ' - No final surveiHarga found');
-                        return;
-                    }
-
-                    // Pengecekan apakah $data['items'] ada dan berupa array
+                    // FIX 2: Logika penyimpanan dirombak total agar akurat
                     if (!isset($data['items']) || !is_array($data['items'])) {
-                        Notification::make()->title('Gagal: Data formulir tidak valid. Harap coba lagi.')->danger()->send();
-                        Log::error('Invalid items data for pengajuan ID: ' . $record->id_pengajuan . ' - Expected array, got: ' . gettype($data['items'] ?? 'null'));
+                        Notification::make()->title('Gagal: Data formulir tidak valid.')->danger()->send();
                         return;
                     }
 
-                    foreach ($items as $item) {
-                        $surveiHarga = $item['surveiHarga'];
-                        $itemData = collect($data['items'])->firstWhere('nama_barang', $surveiHarga->item->nama_barang);
+                    foreach ($data['items'] as $itemData) {
+                        // Cek apakah ID ada di data yang di-submit
+                        if (!isset($itemData['id'])) {
+                            continue; // Lewati jika tidak ada ID
+                        }
 
-                        if ($itemData) {
+                        // Cari SurveiHarga berdasarkan ID unik yang sudah kita "titipkan"
+                        $surveiHarga = SurveiHarga::find($itemData['id']);
+
+                        if ($surveiHarga) {
+                            // Siapkan data yang akan diupdate
                             $updateData = [
-                                'metode_pembayaran' => $itemData['metode_pembayaran'] ?? $surveiHarga->metode_pembayaran,
-                                'nama_rekening' => ($itemData['metode_pembayaran'] === 'Transfer' && isset($itemData['nama_rekening'])) ? $itemData['nama_rekening'] : $surveiHarga->nama_rekening,
-                                'no_rekening' => ($itemData['metode_pembayaran'] === 'Transfer' && isset($itemData['no_rekening'])) ? $itemData['no_rekening'] : $surveiHarga->no_rekening,
-                                'nama_bank' => ($itemData['metode_pembayaran'] === 'Transfer' && isset($itemData['nama_bank'])) ? $itemData['nama_bank'] : $surveiHarga->nama_bank,
-                                'tanggal_dp' => ($itemData['opsi_pembayaran'] === 'Bisa DP' && isset($itemData['tanggal_dp'])) ? $itemData['tanggal_dp'] : $surveiHarga->tanggal_dp,
-                                'tanggal_pelunasan' => (in_array($itemData['opsi_pembayaran'] ?? '', ['Bisa DP', 'Langsung Lunas']) && isset($itemData['tanggal_pelunasan'])) ? $itemData['tanggal_pelunasan'] : $surveiHarga->tanggal_pelunasan,
+                                'metode_pembayaran' => $itemData['metode_pembayaran'],
+                                'tanggal_dp' => $itemData['tanggal_dp'],
+                                'tanggal_pelunasan' => $itemData['tanggal_pelunasan'],
                             ];
 
+                            // Hanya update rekening jika metodenya transfer
+                            if ($itemData['metode_pembayaran'] === 'Transfer') {
+                                $updateData['nama_rekening'] = $itemData['nama_rekening'];
+                                $updateData['no_rekening'] = $itemData['no_rekening'];
+                                $updateData['nama_bank'] = $itemData['nama_bank'];
+                            } else {
+                                // Kosongkan data rekening jika metode diubah ke Tunai
+                                $updateData['nama_rekening'] = null;
+                                $updateData['no_rekening'] = null;
+                                $updateData['nama_bank'] = null;
+                            }
+
+                            // Lakukan update ke database
                             $surveiHarga->update($updateData);
-                            Log::info('Survey edited for survei_harga ID: ' . $surveiHarga->id, [
-                                'pengajuan_id' => $record->id_pengajuan,
-                                'id_item' => $item['id_item'],
-                                'update_data' => $updateData,
-                            ]);
-                        } else {
-                            Log::warning('No matching item data found for survei_harga ID: ' . $surveiHarga->id . ' in pengajuan ID: ' . $record->id_pengajuan);
                         }
                     }
 
-                    Notification::make()->title('Data survei harga berhasil diperbarui')->success()->send();
-                    Log::info('Survey edited for pengajuan ID: ' . $record->id_pengajuan, [
-                        'items_count' => $items->count(),
-                    ]);
+                    Notification::make()->title('Data vendor final berhasil diperbarui')->success()->send();
                 })
-                ->visible(fn(Pengajuan $record) => ($items = $record->items->map(fn($item) => $item->vendorFinal)->filter()->count() > 0) &&
+                ->visible(fn(Pengajuan $record) => ($record->items->contains(fn($item) => $item->vendorFinal)) &&
                     $record->status === Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA),
         ];
     }

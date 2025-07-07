@@ -34,7 +34,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
     protected static ?string $navigationIcon = 'heroicon-o-building-library';
     protected static string $view = 'filament.pages.persetujuan-kepala-divisi-g-a';
     protected static ?string $navigationLabel = 'Persetujuan Kadiv GA';
-    protected static ?int $navigationSort = 8;
+    protected static ?int $navigationSort = 9;
 
     public function getTitle(): string
     {
@@ -86,6 +86,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
+            TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
             BadgeColumn::make('status')->label('Status Saat Ini'),
             BadgeColumn::make('keputusan_kadiv_ga')
                 ->label('Keputusan Kadiv GA')
@@ -121,7 +122,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
             ViewAction::make()->label('Detail')
                 ->modalHeading('')
                 ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
-                    $record->load(['items', 'items.surveiHargas', 'items.vendorFinal']);
+                    $record->load(['items', 'items.surveiHargas', 'pemohon.divisi']);
                     $data = $record->toArray();
                     $data['estimasi_pengadaan'] = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
                     $data['estimasi_perbaikan'] = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
@@ -151,186 +152,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                                     Textarea::make('justifikasi')->disabled(),
                                 ]),
                             ])->columns(2)->disabled()->addActionLabel('Tambah Barang'),
-                            Grid::make(2)->schema([
-                                TextInput::make('estimasi_pengadaan')->label('Estimasi Biaya Pengadaan')->disabled(),
-                                TextInput::make('estimasi_perbaikan')->label('Estimasi Biaya Perbaikan')->disabled(),
-                                TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled(),
-                                TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled(),
-                                Textarea::make('budget_catatan_pengadaan')->label('Catatan Budget Pengadaan')->disabled(),
-                                Textarea::make('budget_catatan_perbaikan')->label('Catatan Budget Perbaikan')->disabled(),
-                                Textarea::make('catatan_revisi')
-                                    ->label('Riwayat Catatan Approval')
-                                    ->disabled()
-                                    ->default(fn($get) => $get('catatan_revisi') ?? 'Tidak ada riwayat catatan approval.')
-                                    ->visible(fn($get) => in_array($get('status'), [
-                                        Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
-                                        Pengajuan::STATUS_SUDAH_BAYAR,
-                                        Pengajuan::STATUS_SELESAI,
-                                        Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL,
-                                        Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
-                                    ]))
-                                    ->columnSpanFull(),
-                            ]),
                         ]),
-                    Section::make('Vendor Final yang Disetujui')
-                        ->schema(function (Pengajuan $record) {
-                            Log::debug('Fetching final vendors for pengajuan ID: ' . $record->id_pengajuan, [
-                                'status' => $record->status,
-                                'kadiv_ga_decision_type' => $record->kadiv_ga_decision_type,
-                                'items_count' => $record->items->count(),
-                                'survei_hargas_count' => $record->items->flatMap->surveiHargas->count(),
-                            ]);
-
-                            $items = $record->items->map(function ($item) {
-                                $surveiHarga = $item->vendorFinal;
-
-                                Log::debug('Checking vendorFinal for item ID: ' . $item->id_item, [
-                                    'is_final' => true,
-                                    'found' => $surveiHarga ? true : false,
-                                    'survei_harga_id' => $surveiHarga ? $surveiHarga->id : null,
-                                    'nama_vendor' => $surveiHarga ? $surveiHarga->nama_vendor : null,
-                                    'nama_barang' => $item->nama_barang,
-                                ]);
-
-                                if (!$surveiHarga) {
-                                    return null;
-                                }
-
-                                return [
-                                    'id_item' => $item->id_item,
-                                    'nama_barang' => $item->nama_barang,
-                                    'survei_harga_id' => $surveiHarga->id,
-                                    'nama_vendor' => $surveiHarga->nama_vendor,
-                                    'harga' => number_format($surveiHarga->harga, 2, ',', '.'),
-                                    'metode_pembayaran' => $surveiHarga->metode_pembayaran,
-                                    'nama_rekening' => $surveiHarga->nama_rekening,
-                                    'no_rekening' => $surveiHarga->no_rekening,
-                                    'nama_bank' => $surveiHarga->nama_bank,
-                                    'opsi_pembayaran' => $surveiHarga->opsi_pembayaran,
-                                    'nominal_dp' => $surveiHarga->nominal_dp ? number_format($surveiHarga->nominal_dp, 2, ',', '.') : null,
-                                    'tanggal_dp' => $surveiHarga->tanggal_dp,
-                                    'tanggal_pelunasan' => $surveiHarga->tanggal_pelunasan,
-                                    'bukti_path' => $surveiHarga->bukti_path,
-                                    'bukti_dp' => $surveiHarga->bukti_dp,
-                                    'bukti_pelunasan' => $surveiHarga->bukti_pelunasan,
-                                    'bukti_penyelesaian' => $surveiHarga->bukti_penyelesaian,
-                                ];
-                            })->filter()->values();
-
-                            if ($items->isEmpty()) {
-                                Log::warning('No final vendor found for pengajuan ID: ' . $record->id_pengajuan, [
-                                    'kadiv_ga_decision_type' => $record->kadiv_ga_decision_type,
-                                    'items_count' => $record->items->count(),
-                                    'survei_hargas_raw' => $record->items->flatMap->surveiHargas->toArray(),
-                                ]);
-                                return [
-                                    Textarea::make('error_message')
-                                        ->label('Kesalahan')
-                                        ->default('Data vendor harga final tidak ditemukan. Pastikan keputusan Kadiv GA telah diproses dan vendor final ditandai.')
-                                        ->disabled()
-                                        ->columnSpanFull(),
-                                ];
-                            }
-
-                            return [
-                                Repeater::make('final_vendors')
-                                    ->label('Vendor Final per Item')
-                                    ->default($items->toArray())
-                                    ->schema([
-                                        Grid::make(3)->schema([
-                                            TextInput::make('nama_barang')
-                                                ->label('Nama Barang')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('nama_barang') ?? 'Tidak tersedia'),
-                                            TextInput::make('nama_vendor')
-                                                ->label('Nama Vendor / Link')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('nama_vendor') ?? 'Tidak tersedia'),
-                                            TextInput::make('harga')
-                                                ->label('Harga')
-                                                ->disabled()
-                                                ->prefix('Rp')
-                                                ->default(fn($get) => $get('harga') ?? '0,00'),
-                                            TextInput::make('metode_pembayaran')
-                                                ->label('Metode Bayar')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('metode_pembayaran') ?? 'Tidak tersedia'),
-                                            TextInput::make('nama_rekening')
-                                                ->label('Nama Rekening')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('nama_rekening') ?? 'Tidak tersedia')
-                                                ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
-                                            TextInput::make('no_rekening')
-                                                ->label('Nomor Rekening')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('no_rekening') ?? 'Tidak tersedia')
-                                                ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
-                                            TextInput::make('nama_bank')
-                                                ->label('Nama Bank')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('nama_bank') ?? 'Tidak tersedia')
-                                                ->visible(fn($get) => $get('metode_pembayaran') === 'Transfer'),
-                                            TextInput::make('opsi_pembayaran')
-                                                ->label('Opsi Bayar')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('opsi_pembayaran') ?? 'Tidak tersedia'),
-                                            TextInput::make('nominal_dp')
-                                                ->label('Nominal DP')
-                                                ->disabled()
-                                                ->prefix('Rp')
-                                                ->default(fn($get) => $get('nominal_dp') ?? '0,00')
-                                                ->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
-                                            DatePicker::make('tanggal_dp')
-                                                ->label('Tanggal DP')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('tanggal_dp'))
-                                                ->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
-                                            DatePicker::make('tanggal_pelunasan')
-                                                ->label('Tanggal Pelunasan')
-                                                ->disabled()
-                                                ->default(fn($get) => $get('tanggal_pelunasan'))
-                                                ->visible(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas'])),
-                                            FileUpload::make('bukti_path')
-                                                ->label('Bukti Survei')
-                                                ->disabled()
-                                                ->visibility('private')
-                                                ->default(fn($get) => $get('bukti_path'))
-                                                ->columnSpanFull(),
-                                            FileUpload::make('bukti_dp')
-                                                ->label('Bukti DP')
-                                                ->disabled()
-                                                ->visibility('private')
-                                                ->default(fn($get) => $get('bukti_dp'))
-                                                ->visible(fn($get) => !empty($get('bukti_dp')))
-                                                ->columnSpanFull(),
-                                            FileUpload::make('bukti_pelunasan')
-                                                ->label('Bukti Pelunasan')
-                                                ->disabled()
-                                                ->visibility('private')
-                                                ->default(fn($get) => $get('bukti_pelunasan'))
-                                                ->visible(fn($get) => !empty($get('bukti_pelunasan')))
-                                                ->columnSpanFull(),
-                                            FileUpload::make('bukti_penyelesaian')
-                                                ->label('Bukti Penyelesaian')
-                                                ->disabled()
-                                                ->visibility('private')
-                                                ->default(fn($get) => $get('bukti_penyelesaian'))
-                                                ->visible(fn($get) => !empty($get('bukti_penyelesaian')))
-                                                ->columnSpanFull(),
-                                        ]),
-                                    ])
-                                    ->disabled()
-                                    ->columnSpanFull(),
-                            ];
-                        })
-                        ->visible(fn(Pengajuan $record) => in_array($record->status, [
-                            Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
-                            Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL,
-                            Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
-                            Pengajuan::STATUS_SUDAH_BAYAR,
-                            Pengajuan::STATUS_SELESAI,
-                        ]))
-                        ->columnSpanFull(),
                     Section::make('Vendor Harga Final yang Di-approve')
                         ->schema(function (Pengajuan $record) {
                             Log::debug('Processing Vendor Harga Final for pengajuan ID: ' . $record->id_pengajuan);
@@ -361,33 +183,24 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                                 'nama_vendor' => $surveiHarga->nama_vendor ?? 'N/A',
                                 'harga' => 'Rp ' . number_format($surveiHarga->harga ?? 0, 0, ',', '.'),
                                 'metode_pembayaran' => $surveiHarga->metode_pembayaran ?? 'N/A',
+                                'opsi_pembayaran' => $surveiHarga->opsi_pembayaran ?? 'N/A',
                             ];
 
                             $content = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0; color: #333; background-color: #fff;">'
-                                . '<thead>'
-                                . '<tr style="background-color: #e0e0e0;">'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; text-align: left;">Label</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; text-align: left;">Detail</th>'
-                                . '</tr>'
-                                . '</thead>'
-                                . '<tbody>'
-                                . '<tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">Nama Barang</td>'
+                                . '<thead><tr>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Nama Barang</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Nama Vendor</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Harga</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Metode Pembayaran</th>'
+                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Opsi Pembayaran</th>'
+                                . '</tr></thead>'
+                                . '<tbody><tr>'
                                 . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_barang']) . '</td>'
-                                . '</tr>'
-                                . '<tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">Nama Vendor</td>'
                                 . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_vendor']) . '</td>'
-                                . '</tr>'
-                                . '<tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">Harga</td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['harga']) . '</td>'
-                                . '</tr>'
-                                . '<tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">Metode Pembayaran</td>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['harga']) . ' <span style="color: #888; font-size: 15px;">/ Item</span></td>'
                                 . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['metode_pembayaran']) . '</td>'
-                                . '</tr>'
-                                . '</tbody>'
+                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['opsi_pembayaran']) . '</td>'
+                                . '</tr></tbody>'
                                 . '</table>';
 
                             return [
@@ -400,6 +213,11 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                             Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
                             Pengajuan::STATUS_SUDAH_BAYAR,
                             Pengajuan::STATUS_SELESAI,
+                            Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL,
+                            Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
+                            Pengajuan::STATUS_DITOLAK_KADIV_GA,
+                            Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL,
+                            Pengajuan::STATUS_DITOLAK_DIREKTUR_UTAMA,
                         ]))
                         ->columnSpanFull(),
                 ]),

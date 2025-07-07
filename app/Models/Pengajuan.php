@@ -31,6 +31,7 @@ class Pengajuan extends Model
         'it_recommended_by',
         'ga_surveyed_by',
         'budget_approved_by',
+        'kadiv_ops_budget_approved_by', // TAMBAHKAN INI
         'kadiv_ga_approved_by',
         'direktur_operasional_approved_by',
         'direktur_utama_approved_by',
@@ -44,10 +45,11 @@ class Pengajuan extends Model
     public const STATUS_SURVEI_GA = 'Proses Survei Harga GA';
     public const STATUS_DISETUJUI = 'Disetujui untuk Pembelian';
     public const STATUS_MENUNGGU_APPROVAL_BUDGET = 'Menunggu Persetujuan Budget';
+    public const STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET = 'Menunggu Approval Budget Kadiv Operasional'; // TAMBAHKAN STATUS BARU
     public const STATUS_MENUNGGU_APPROVAL_KADIV_GA = 'Menunggu Approval Kadiv GA';
     public const STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL = 'Menunggu Approval Direktur Operasional';
     public const STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA = 'Menunggu Approval Direktur Utama';
-    public const STATUS_MENUNGGU_PENCARIAN_DANA = 'Menunggu Pencairan Dana';
+    public const STATUS_MENUNGGU_PENCARIAN_DANA = 'Menunggu Pencarian Dana';
     public const STATUS_SUDAH_BAYAR = 'Sudah Bayar';
     public const STATUS_SELESAI = 'Selesai';
     public const STATUS_DITOLAK_MANAGER = 'Ditolak oleh Manager';

@@ -4,10 +4,12 @@ namespace App\Filament\Pages;
 
 use Carbon\Carbon;
 use Filament\Forms;
+use App\Models\User;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
 use Filament\Tables\Table;
 use App\Models\SurveiHarga;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\HtmlString;
 use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
@@ -27,6 +29,8 @@ use Filament\Forms\Components\FileUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\Placeholder;
 use Filament\Tables\Concerns\InteractsWithTable;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Illuminate\Support\Facades\URL;
 
 class PencairanDanaOperasional extends Page implements HasTable
 {
@@ -35,7 +39,7 @@ class PencairanDanaOperasional extends Page implements HasTable
     protected static ?string $navigationIcon = 'heroicon-o-archive-box-arrow-down';
     protected static string $view = 'filament.pages.pencairan-dana-operasional';
     protected static ?string $navigationLabel = 'Pencairan Dana';
-    protected static ?int $navigationSort = 11;
+    protected static ?int $navigationSort = 12;
 
     public function getTitle(): string
     {
@@ -44,7 +48,7 @@ class PencairanDanaOperasional extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()->hasAnyRole(['Kepala Divisi Operasional', 'Super Admin']);
+        return Auth::user()->hasAnyRole(['Tim Budgeting', 'Super Admin']);
     }
 
     protected function getTableQuery(): Builder
@@ -388,6 +392,95 @@ class PencairanDanaOperasional extends Page implements HasTable
                     }
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA),
+            Action::make('download_spm')
+                ->label('SPM')
+                ->color('info')
+                ->icon('heroicon-o-document-arrow-down')
+                ->action(function (Pengajuan $record) {
+                    // 1. Kumpulkan semua data yang dibutuhkan oleh template
+                    $itemsToPay = [];
+                    $total = 0;
+                    foreach ($record->items as $item) {
+                        if ($item->vendorFinal) {
+                            $vendor = $item->vendorFinal;
+                            $subtotal = ($vendor->harga ?? 0) * $item->kuantitas;
+                            $itemsToPay[] = [
+                                'barang' => $item->nama_barang,
+                                'kuantitas' => $item->kuantitas,
+                                'harga' => $vendor->harga ?? 0,
+                                'subtotal' => $subtotal,
+                                'vendor' => $vendor->nama_vendor,
+                                'metode_pembayaran' => $vendor->metode_pembayaran,
+                                'opsi_pembayaran' => $vendor->opsi_pembayaran,
+                                'rekening_details' => [
+                                    'nama_bank' => $vendor->nama_bank,
+                                    'no_rekening' => $vendor->no_rekening,
+                                    'nama_rekening' => $vendor->nama_rekening,
+                                ],
+                                'dp_details' => [
+                                    'nominal_dp' => $vendor->nominal_dp,
+                                    'tanggal_dp' => $vendor->tanggal_dp ? Carbon::parse($vendor->tanggal_dp)->translatedFormat('d M Y') : '-',
+                                ],
+                                'tanggal_pelunasan' => $vendor->tanggal_pelunasan ? Carbon::parse($vendor->tanggal_pelunasan)->translatedFormat('d M Y') : '-',
+                            ];
+                            $total += $subtotal;
+                        }
+                    }
+
+                    // 2. Tentukan siapa direktur yang approve
+                    // --- Generate QR Code untuk setiap penanda tangan ---
+                    $direkturQrCode = null;
+                    $kadivGaQrCode = null;
+
+                    // Tentukan siapa direktur yang approve
+                    $direktur = null;
+                    if ($record->direktur_utama_approved_by) {
+                        $direktur = User::find($record->direktur_utama_approved_by);
+                        $direkturJabatan = 'Direktur Utama';
+                    } elseif ($record->direktur_operasional_approved_by) {
+                        $direktur = User::find($record->direktur_operasional_approved_by);
+                        $direkturJabatan = 'Direktur Operasional';
+                    }
+
+                    // Generate QR Code untuk Direktur jika ada
+                    if ($direktur) {
+                        $verificationUrl = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $direktur]);
+                        $qrCodeData = QrCode::format('png')->size(80)->margin(1)->generate($verificationUrl);
+                        $direkturQrCode = 'data:image/png;base64,' . base64_encode($qrCodeData);
+                    }
+
+                    // Generate QR Code untuk Kadiv GA
+                    $kadivGa = User::find($record->kadiv_ga_approved_by);
+                    if ($kadivGa) {
+                        $verificationUrl = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $kadivGa]);
+                        $qrCodeData = QrCode::format('png')->size(80)->margin(1)->generate($verificationUrl);
+                        $kadivGaQrCode = 'data:image/png;base64,' . base64_encode($qrCodeData);
+                    }
+
+
+                    // 3. Siapkan semua data dalam satu array untuk dikirim ke view
+                    $data = [
+                        'kode_pengajuan' => $record->kode_pengajuan,
+                        'tanggal_pengajuan' => $record->created_at->translatedFormat('d F Y'),
+                        'pemohon' => $record->pemohon->nama_user,
+                        'divisi' => $record->pemohon->divisi->nama_divisi,
+                        'items' => $itemsToPay,
+                        'total' => $total,
+                        'kadivGaName' => $kadivGa?->nama_user ?? '(Kadiv GA)',
+                        'direkturName' => $direktur?->nama_user,
+                        'direkturJabatan' => $direkturJabatan ?? null,
+                        'kadivGaQrCode' => $kadivGaQrCode,
+                        'direkturQrCode' => $direkturQrCode,
+                    ];
+
+                    $pdf = Pdf::loadView('documents.spm_template', $data);
+                    $fileName = 'SPM_' . str_replace('/', '_', $record->kode_pengajuan) . '.pdf';
+
+                    return response()->streamDownload(
+                        fn() => print($pdf->output()),
+                        $fileName
+                    );
+                }),
         ];
     }
 }
