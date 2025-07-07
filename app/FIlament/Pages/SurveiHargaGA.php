@@ -480,11 +480,6 @@ class SurveiHargaGA extends Page implements HasTable
                                         TextInput::make('opsi_pembayaran')
                                             ->label('Opsi Bayar')
                                             ->disabled(),
-                                        TextInput::make('nominal_dp')
-                                            ->label('Nominal DP')
-                                            ->disabled()
-                                            ->prefix('Rp')
-                                            ->visible(fn($get) => $get('opsi_pembayaran') === 'Bisa DP'),
                                         DatePicker::make('tanggal_dp')
                                             ->label('Tanggal DP')
                                             ->required(fn($get) => $get('opsi_pembayaran') === 'Bisa DP')
@@ -493,27 +488,6 @@ class SurveiHargaGA extends Page implements HasTable
                                             ->label('Tanggal Pelunasan')
                                             ->required(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas']))
                                             ->visible(fn($get) => in_array($get('opsi_pembayaran'), ['Bisa DP', 'Langsung Lunas'])),
-                                        FileUpload::make('bukti_path')
-                                            ->label('Bukti Survei')
-                                            ->disabled()
-                                            ->directory('bukti-survei')
-                                            ->visibility('private')
-                                            ->columnSpanFull(),
-                                        FileUpload::make('bukti_dp')
-                                            ->label('Bukti DP')
-                                            ->disabled()
-                                            ->visibility('private')
-                                            ->visible(fn($get) => !empty($get('bukti_dp'))),
-                                        FileUpload::make('bukti_pelunasan')
-                                            ->label('Bukti Pelunasan')
-                                            ->disabled()
-                                            ->visibility('private')
-                                            ->visible(fn($get) => !empty($get('bukti_pelunasan'))),
-                                        FileUpload::make('bukti_penyelesaian')
-                                            ->label('Bukti Penyelesaian')
-                                            ->disabled()
-                                            ->visibility('private')
-                                            ->visible(fn($get) => !empty($get('bukti_penyelesaian'))),
                                     ]),
                                 ]),
                             ])
@@ -522,6 +496,11 @@ class SurveiHargaGA extends Page implements HasTable
                     ];
                 })
                 ->action(function (array $data, Pengajuan $record) {
+                    Log::info('Submitting edit survey for pengajuan ID: ' . $record->id_pengajuan, [
+                        'user_id' => Auth::id(),
+                        'received_data' => $data, // Log seluruh data yang diterima untuk debugging
+                    ]);
+
                     $items = $record->items->map(function ($item) {
                         return [
                             'id_item' => $item->id_item,
@@ -535,18 +514,25 @@ class SurveiHargaGA extends Page implements HasTable
                         return;
                     }
 
+                    // Pengecekan apakah $data['items'] ada dan berupa array
+                    if (!isset($data['items']) || !is_array($data['items'])) {
+                        Notification::make()->title('Gagal: Data formulir tidak valid. Harap coba lagi.')->danger()->send();
+                        Log::error('Invalid items data for pengajuan ID: ' . $record->id_pengajuan . ' - Expected array, got: ' . gettype($data['items'] ?? 'null'));
+                        return;
+                    }
+
                     foreach ($items as $item) {
                         $surveiHarga = $item['surveiHarga'];
-                        $itemData = collect($data['items'])->firstWhere('nama_barang', $item['surveiHarga']->item->nama_barang);
+                        $itemData = collect($data['items'])->firstWhere('nama_barang', $surveiHarga->item->nama_barang);
 
                         if ($itemData) {
                             $updateData = [
-                                'metode_pembayaran' => $itemData['metode_pembayaran'],
-                                'nama_rekening' => $itemData['metode_pembayaran'] === 'Transfer' ? $itemData['nama_rekening'] : null,
-                                'no_rekening' => $itemData['metode_pembayaran'] === 'Transfer' ? $itemData['no_rekening'] : null,
-                                'nama_bank' => $itemData['metode_pembayaran'] === 'Transfer' ? $itemData['nama_bank'] : null,
-                                'tanggal_dp' => $itemData['opsi_pembayaran'] === 'Bisa DP' ? $itemData['tanggal_dp'] : null,
-                                'tanggal_pelunasan' => in_array($itemData['opsi_pembayaran'], ['Bisa DP', 'Langsung Lunas']) ? $itemData['tanggal_pelunasan'] : null,
+                                'metode_pembayaran' => $itemData['metode_pembayaran'] ?? $surveiHarga->metode_pembayaran,
+                                'nama_rekening' => ($itemData['metode_pembayaran'] === 'Transfer' && isset($itemData['nama_rekening'])) ? $itemData['nama_rekening'] : $surveiHarga->nama_rekening,
+                                'no_rekening' => ($itemData['metode_pembayaran'] === 'Transfer' && isset($itemData['no_rekening'])) ? $itemData['no_rekening'] : $surveiHarga->no_rekening,
+                                'nama_bank' => ($itemData['metode_pembayaran'] === 'Transfer' && isset($itemData['nama_bank'])) ? $itemData['nama_bank'] : $surveiHarga->nama_bank,
+                                'tanggal_dp' => ($itemData['opsi_pembayaran'] === 'Bisa DP' && isset($itemData['tanggal_dp'])) ? $itemData['tanggal_dp'] : $surveiHarga->tanggal_dp,
+                                'tanggal_pelunasan' => (in_array($itemData['opsi_pembayaran'] ?? '', ['Bisa DP', 'Langsung Lunas']) && isset($itemData['tanggal_pelunasan'])) ? $itemData['tanggal_pelunasan'] : $surveiHarga->tanggal_pelunasan,
                             ];
 
                             $surveiHarga->update($updateData);
@@ -555,6 +541,8 @@ class SurveiHargaGA extends Page implements HasTable
                                 'id_item' => $item['id_item'],
                                 'update_data' => $updateData,
                             ]);
+                        } else {
+                            Log::warning('No matching item data found for survei_harga ID: ' . $surveiHarga->id . ' in pengajuan ID: ' . $record->id_pengajuan);
                         }
                     }
 
