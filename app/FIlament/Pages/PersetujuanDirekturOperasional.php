@@ -22,6 +22,7 @@ use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Hidden;
 use Filament\Tables\Concerns\InteractsWithTable;
 
 class PersetujuanDirekturOperasional extends Page implements HasTable
@@ -43,11 +44,10 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
         return Auth::user() && Auth::user()->hasAnyRole(['Direktur Operasional', 'Super Admin']);
     }
 
-    // PERBAIKAN 1: Mengubah Kueri untuk Menampilkan Riwayat
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
-        $query = Pengajuan::query()->with(['pemohon']);
+        $query = Pengajuan::query()->with(['pemohon', 'pemohon.divisi']);
 
         if ($user && !$user->hasRole('Super Admin')) {
             $query->where(function (Builder $q) use ($user) {
@@ -62,24 +62,30 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
         return $query->latest();
     }
 
-    // PERBAIKAN 2: Menambahkan Kolom "Tindakan Saya"
     protected function getTableColumns(): array
     {
         return [
-            TextColumn::make('kode_pengajuan')->label('Kode Pengajuan')->searchable(),
-            TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
-            BadgeColumn::make('status')->label('Status Saat Ini'),
+            TextColumn::make('kode_pengajuan')
+                ->label('Kode Pengajuan')
+                ->searchable(),
+            TextColumn::make('pemohon.nama_user')
+                ->label('Pemohon')
+                ->searchable(),
+            TextColumn::make('pemohon.divisi.nama_divisi')
+                ->label('Divisi'),
+            TextColumn::make('total_nilai')
+                ->label('Nilai Pengajuan')
+                ->money('IDR'),
+            BadgeColumn::make('status')
+                ->label('Status Saat Ini')
+                ->color(fn($state) => Pengajuan::getStatusBadgeColor($state)),
             BadgeColumn::make('tindakan_saya')
                 ->label('Tindakan Saya')
                 ->state(function (Pengajuan $record): string {
                     if (!$record->direktur_operasional_approved_by) {
                         return 'Menunggu Aksi';
                     }
-                    if (in_array($record->status, [Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL])) {
-                        return 'Ditolak';
-                    }
-                    return 'Disetujui';
+                    return $record->direktur_operasional_decision_type ?? ($record->status === Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL ? 'Ditolak' : 'Disetujui');
                 })
                 ->color(fn(string $state): string => match ($state) {
                     'Disetujui' => 'success',
@@ -93,123 +99,310 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
     {
         return [
             ViewAction::make()->label('Detail')
-                ->modalHeading('')
+                ->modalHeading('Detail Pengajuan dan Review Budget')
+                ->modalWidth('4xl')
                 ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
                     $record->load(['items', 'items.surveiHargas', 'pemohon.divisi']);
+                    $getScenarioDetails = function ($items, $tipeSurvei) {
+                        $details = [];
+                        $totalCost = 0;
+
+                        foreach ($items as $item) {
+                            $cheapestSurvey = $item->surveiHargas->where('tipe_survei', $tipeSurvei)->sortBy('harga')->first();
+                            if (!$cheapestSurvey) continue;
+
+                            $itemCost = $cheapestSurvey->harga * $item->kuantitas;
+                            $taxInfo = 'Tidak ada pajak';
+                            $taxCost = 0;
+
+                            if ($cheapestSurvey->kondisi_pajak === 'Pajak ditanggung kita') {
+                                $taxCost = $cheapestSurvey->nominal_pajak;
+                                $taxInfo = ($cheapestSurvey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
+                            }
+
+                            $details[] = [
+                                'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
+                                'harga_vendor' => 'Rp ' . number_format($itemCost, 0, ',', '.'),
+                                'pajak_info' => $taxInfo,
+                            ];
+
+                            $totalCost += ($itemCost + $taxCost);
+                        }
+
+                        return empty($details) ? null : ['details' => $details, 'total' => 'Rp ' . number_format($totalCost, 0, ',', '.')];
+                    };
+
                     $data = $record->toArray();
-                    $data['estimasi_pengadaan'] = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
-                    $data['estimasi_perbaikan'] = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
+                    $data['pengadaan_details'] = $getScenarioDetails($record->items, 'Pengadaan');
+                    $data['perbaikan_details'] = $getScenarioDetails($record->items, 'Perbaikan');
                     $data['nama_divisi'] = $record->pemohon->divisi->nama_divisi ?? 'Tidak tersedia';
                     $data['nama_barang'] = $record->items->pluck('nama_barang')->implode(', ') ?: 'Tidak tersedia';
                     $data['catatan_revisi'] = $record->catatan_revisi ?? 'Tidak ada riwayat catatan approval.';
+
+                    // Logging untuk debugging
+                    Log::debug('Form data for Pengajuan ID: ' . $record->id_pengajuan, [
+                        'pengadaan_details' => $data['pengadaan_details'],
+                        'perbaikan_details' => $data['perbaikan_details'],
+                    ]);
+
                     $form->fill($data);
                 })
                 ->form([
                     Section::make('Detail Pengajuan')
                         ->schema([
                             Grid::make(3)->schema([
-                                TextInput::make('kode_pengajuan')->disabled(),
-                                TextInput::make('status')->disabled(),
-                                TextInput::make('total_nilai')->label('Total Nilai')->disabled(),
-                                TextInput::make('nama_divisi')->label('Divisi')->disabled(),
-                                TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
+                                TextInput::make('kode_pengajuan')
+                                    ->label('Kode Pengajuan')
+                                    ->disabled(),
+                                TextInput::make('status')
+                                    ->label('Status')
+                                    ->disabled(),
+                                TextInput::make('total_nilai')
+                                    ->label('Total Nilai')
+                                    ->disabled(),
+                                TextInput::make('nama_divisi')
+                                    ->label('Divisi')
+                                    ->disabled(),
+                                TextInput::make('nama_barang')
+                                    ->label('Nama Barang')
+                                    ->disabled(),
                             ]),
-                            Repeater::make('items')->relationship()->label('')->schema([
-                                Grid::make(6)->schema([
-                                    TextInput::make('kategori_barang')->disabled()->columnSpan(2),
-                                    TextInput::make('nama_barang')->disabled()->columnSpan(3),
-                                    TextInput::make('kuantitas')->disabled()->columnSpan(1),
-                                ]),
-                                Grid::make(2)->schema([
-                                    Textarea::make('spesifikasi')->disabled(),
-                                    Textarea::make('justifikasi')->disabled(),
-                                ]),
-                            ])->columns(2)->disabled()->addActionLabel('Tambah Barang'),
-                        ]),
-                    Section::make('Vendor Harga Final yang Di-approve')
-                        ->schema(function (Pengajuan $record) {
-                            Log::debug('Processing Vendor Harga Final for pengajuan ID: ' . $record->id_pengajuan);
+                            Repeater::make('items')
+                                ->relationship()
+                                ->label('')
+                                ->schema([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('kategori_barang')
+                                            ->label('Kategori Barang')
+                                            ->disabled(),
+                                        TextInput::make('nama_barang')
+                                            ->label('Nama Barang')
+                                            ->disabled(),
+                                        TextInput::make('kuantitas')
+                                            ->label('Kuantitas')
+                                            ->disabled(),
+                                    ]),
+                                    Grid::make(2)->schema([
+                                        Textarea::make('spesifikasi')
+                                            ->label('Spesifikasi')
+                                            ->disabled(),
+                                        Textarea::make('justifikasi')
+                                            ->label('Justifikasi')
+                                            ->disabled(),
+                                    ]),
+                                ])
+                                ->columns(1)
+                                ->disabled()
+                                ->addActionLabel('Tambah Barang'),
+                            Grid::make(2)->schema([
+                                TextInput::make('rekomendasi_it_tipe')
+                                    ->label('Rekomendasi Tipe dari IT')
+                                    ->disabled(),
+                                Textarea::make('rekomendasi_it_catatan')
+                                    ->label('Rekomendasi Catatan dari IT')
+                                    ->disabled(),
+                            ])
+                                ->visible(fn($record) => !empty($record?->rekomendasi_it_tipe)),
+                        ])
+                        ->collapsible()
+                        ->collapsed(),
 
-                            $firstItem = $record->items->first();
-                            if (!$firstItem) {
-                                return [
-                                    Placeholder::make('no_item_placeholder')
-                                        ->content('Tidak ada item terkait untuk pengajuan ini.')
-                                        ->columnSpanFull(),
-                                ];
-                            }
+                    Section::make('Rincian Estimasi Biaya - Skenario PENGADAAN')
+                        ->schema([
+                            Repeater::make('pengadaan_details.details')
+                                ->label('')
+                                ->schema([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('nama_barang')
+                                            ->label('Item')
+                                            ->disabled(),
+                                        TextInput::make('harga_vendor')
+                                            ->label('Harga dari Vendor')
+                                            ->disabled(),
+                                        TextInput::make('pajak_info')
+                                            ->label('Pajak Ditanggung Perusahaan')
+                                            ->disabled(),
+                                    ])
+                                ])
+                                ->disabled()
+                                ->disableItemCreation()
+                                ->disableItemDeletion()
+                                ->disableItemMovement(),
+                            Placeholder::make('pengadaan_details.total')
+                                ->label('TOTAL ESTIMASI BIAYA PENGADAAN')
+                                ->content(fn($get) => new HtmlString('<span class="text-xl text-primary-600 font-bold">' . ($get('pengadaan_details.total') ?? 'Rp 0') . '</span>')),
+                        ])
+                        ->collapsible()
+                        ->collapsed(),
 
-                            $surveiHarga = SurveiHarga::where('id_item', $firstItem->id_item)
-                                ->where('is_final', 1)
-                                ->first();
+                    Section::make('Rincian Estimasi Biaya - Skenario PERBAIKAN')
+                        ->schema([
+                            Repeater::make('perbaikan_details.details')
+                                ->label('')
+                                ->schema([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('nama_barang')
+                                            ->label('Item')
+                                            ->disabled(),
+                                        TextInput::make('harga_vendor')
+                                            ->label('Harga dari Vendor')
+                                            ->disabled(),
+                                        TextInput::make('pajak_info')
+                                            ->label('Pajak Ditanggung Perusahaan')
+                                            ->disabled(),
+                                    ])
+                                ])
+                                ->disabled()
+                                ->disableItemCreation()
+                                ->disableItemDeletion()
+                                ->disableItemMovement(),
+                            Placeholder::make('perbaikan_details.total')
+                                ->label('TOTAL ESTIMASI BIAYA PERBAIKAN')
+                                ->content(fn($get) => new HtmlString('<span class="text-xl text-success-600 font-bold">' . ($get('perbaikan_details.total') ?? 'Rp 0') . '</span>')),
+                        ])
+                        ->visible(fn($get) => !empty($get('perbaikan_details.details')))
+                        ->collapsible()
+                        ->collapsed(),
 
-                            if (!$surveiHarga) {
-                                return [
-                                    Placeholder::make('no_final_vendor_placeholder')
-                                        ->content('Tidak ada data vendor final untuk id_item = ' . $firstItem->id_item . '.')
-                                        ->columnSpanFull(),
-                                ];
-                            }
+                    Section::make('Review Budgeting')
+                        ->schema([
+                            Grid::make(2)->schema([
+                                TextInput::make('budget_status_pengadaan')
+                                    ->label('Status Budget Pengadaan')
+                                    ->disabled(),
+                                Textarea::make('budget_catatan_pengadaan')
+                                    ->label('Catatan Budget Pengadaan')
+                                    ->disabled(),
+                            ]),
+                            Grid::make(2)->schema([
+                                TextInput::make('budget_status_perbaikan')
+                                    ->label('Status Budget Perbaikan')
+                                    ->disabled(),
+                                Textarea::make('budget_catatan_perbaikan')
+                                    ->label('Catatan Budget Perbaikan')
+                                    ->disabled(),
+                            ])
+                                ->visible(fn($get) => !is_null($get('budget_status_perbaikan'))),
+                        ])
+                        ->collapsible()
+                        ->collapsed(),
 
-                            $data = [
-                                'nama_barang' => $surveiHarga->item->nama_barang ?? 'N/A',
-                                'nama_vendor' => $surveiHarga->nama_vendor ?? 'N/A',
-                                'harga' => 'Rp ' . number_format($surveiHarga->harga ?? 0, 0, ',', '.'),
-                                'metode_pembayaran' => $surveiHarga->metode_pembayaran ?? 'N/A',
-                                'opsi_pembayaran' => $surveiHarga->opsi_pembayaran ?? 'N/A',
-                            ];
-
-                            $content = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0; color: #333; background-color: #fff;">'
-                                . '<thead><tr>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Nama Barang</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Nama Vendor</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Harga</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Metode Pembayaran</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Opsi Pembayaran</th>'
-                                . '</tr></thead>'
-                                . '<tbody><tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_barang']) . '</td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_vendor']) . '</td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['harga']) . ' <span style="color: #888; font-size: 15px;">/ Item</span></td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['metode_pembayaran']) . '</td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['opsi_pembayaran']) . '</td>'
-                                . '</tr></tbody>'
-                                . '</table>';
-
-                            return [
-                                Placeholder::make('final_vendor_data')
-                                    ->content(new HtmlString($content))
-                                    ->columnSpanFull(),
-                            ];
-                        })
+                    Section::make('Final Approve')
+                        ->schema([
+                            Grid::make(2)->schema([
+                                TextInput::make('kadiv_ga_decision_type')
+                                    ->label('Keputusan Kadiv GA')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('kadiv_ga_decision_type') ?? 'Tidak Diketahui'),
+                                Textarea::make('kadiv_ga_catatan')
+                                    ->label('Catatan Kadiv GA')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('kadiv_ga_catatan') ?? 'Tidak ada catatan'),
+                            ]),
+                            Grid::make(2)->schema([
+                                TextInput::make('direktur_operasional_decision_type')
+                                    ->label('Keputusan Direktur Operasional')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('direktur_operasional_decision_type') ?? 'Tidak Diketahui'),
+                                Textarea::make('direktur_operasional_catatan')
+                                    ->label('Catatan Direktur Operasional')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('direktur_operasional_catatan') ?? 'Tidak ada catatan'),
+                            ])->visible(fn($get) => !empty($get('direktur_operasional_decision_type')) || !empty($get('direktur_operasional_catatan'))),
+                            Grid::make(2)->schema([
+                                TextInput::make('direktur_utama_decision_type')
+                                    ->label('Keputusan Direktur Utama')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('direktur_utama_decision_type') ?? 'Tidak Diketahui'),
+                                Textarea::make('direktur_utama_catatan')
+                                    ->label('Catatan Direktur Utama')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('direktur_utama_catatan') ?? 'Tidak ada catatan'),
+                            ])->visible(fn($get) => !empty($get('direktur_utama_decision_type')) || !empty($get('direktur_utama_catatan'))),
+                        ])
                         ->visible(fn(Pengajuan $record) => in_array($record->status, [
                             Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                            Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL,
+                            Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL,
                             Pengajuan::STATUS_SUDAH_BAYAR,
                             Pengajuan::STATUS_SELESAI,
                         ]))
-                        ->columnSpanFull(),
+                        ->collapsible()
+                        ->collapsed(),
                 ]),
 
             Action::make('approve')
-                ->label('Setujui')->color('success')->icon('heroicon-o-check-circle')->requiresConfirmation()
-                ->action(function (Pengajuan $record) {
+                ->label('Setujui')
+                ->color('success')
+                ->icon('heroicon-o-check-circle')
+                ->requiresConfirmation()
+                ->form([
+                    Hidden::make('direktur_operasional_decision_type')
+                        ->default('Disetujui'),
+                    TextInput::make('display_decision_type')
+                        ->label('Jenis Keputusan')
+                        ->default('Disetujui')
+                        ->disabled(),
+                    Textarea::make('direktur_operasional_catatan')
+                        ->label('Catatan (Opsional)')
+                        ->required(false),
+                ])
+                ->action(function (array $data, Pengajuan $record) {
+                    $catatanTambahan = "\n\n[Disetujui oleh Direktur Operasional: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
+                    $catatanRevisi = ($record->catatan_revisi ?? '') . $catatanTambahan;
+
                     $record->update([
                         'status' => Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
                         'direktur_operasional_approved_by' => Auth::id(),
+                        'direktur_operasional_decision_type' => $data['direktur_operasional_decision_type'] ?? 'Disetujui',
+                        'direktur_operasional_catatan' => $data['direktur_operasional_catatan'] ?? null,
+                        'catatan_revisi' => trim($catatanRevisi),
                     ]);
+
+                    Log::info('Pengajuan disetujui oleh Direktur Operasional', [
+                        'id_pengajuan' => $record->id_pengajuan,
+                        'status' => Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                        'approved_by' => Auth::id(),
+                    ]);
+
                     Notification::make()->title('Pengajuan disetujui')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL),
 
             Action::make('reject')
-                ->label('Tolak')->color('danger')->icon('heroicon-o-x-circle')->requiresConfirmation()
-                ->form([Forms\Components\Textarea::make('catatan_revisi_direksi')->label('Alasan Penolakan')->required(),])
+                ->label('Tolak')
+                ->color('danger')
+                ->icon('heroicon-o-x-circle')
+                ->requiresConfirmation()
+                ->form([
+                    Hidden::make('direktur_operasional_decision_type')
+                        ->default('Ditolak'),
+                    TextInput::make('display_decision_type')
+                        ->label('Jenis Keputusan')
+                        ->default('Ditolak')
+                        ->disabled(),
+                    Textarea::make('direktur_operasional_catatan')
+                        ->label('Catatan (Wajib)')
+                        ->required(),
+                ])
                 ->action(function (array $data, Pengajuan $record) {
+                    $catatanTambahan = "\n\n[Ditolak oleh Direktur Operasional: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
+                    $catatanRevisi = ($record->catatan_revisi ?? '') . $catatanTambahan;
+
                     $record->update([
                         'status' => Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL,
-                        'catatan_revisi' => $record->catatan_revisi . "\n\n[Ditolak oleh Direktur Operasional: " . Auth::user()->nama_user . "]\n" . $data['catatan_revisi_direksi'],
                         'direktur_operasional_approved_by' => Auth::id(),
+                        'direktur_operasional_decision_type' => $data['direktur_operasional_decision_type'] ?? 'Ditolak',
+                        'direktur_operasional_catatan' => $data['direktur_operasional_catatan'],
+                        'catatan_revisi' => trim($catatanRevisi),
                     ]);
+
+                    Log::info('Pengajuan ditolak oleh Direktur Operasional', [
+                        'id_pengajuan' => $record->id_pengajuan,
+                        'status' => Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL,
+                        'approved_by' => Auth::id(),
+                    ]);
+
                     Notification::make()->title('Pengajuan ditolak')->danger()->send();
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL),

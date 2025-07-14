@@ -27,6 +27,12 @@ class SurveiHarga extends Model
         'bukti_pelunasan',
         'bukti_penyelesaian',
         'is_final',
+        'kondisi_pajak',
+        'jenis_pajak',
+        'npwp_nik',
+        'nama_pemilik_pajak',
+        'nominal_pajak',
+        'rincian_harga',
     ];
 
     public function item(): BelongsTo

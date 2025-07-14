@@ -31,6 +31,8 @@ use Filament\Forms\Components\Placeholder;
 use Filament\Tables\Concerns\InteractsWithTable;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Storage;
+
 
 class PencairanDanaOperasional extends Page implements HasTable
 {
@@ -75,7 +77,9 @@ class PencairanDanaOperasional extends Page implements HasTable
             TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
-            BadgeColumn::make('status')->label('Status Saat Ini')->color('info'),
+            BadgeColumn::make('status')
+                ->label('Status Saat Ini')
+                ->color(fn($state) => Pengajuan::getStatusBadgeColor($state)),
             BadgeColumn::make('tindakan_saya')
                 ->label('Tindakan Saya')
                 ->state(function (Pengajuan $record): string {
@@ -95,6 +99,12 @@ class PencairanDanaOperasional extends Page implements HasTable
 
     protected function getTableActions(): array
     {
+        $getPrivateFileUrl = function (string $path): ?string {
+            if (!Storage::disk('private')->exists($path)) {
+                return null;
+            }
+            return route('private.file', ['path' => $path]);
+        };
         return [
             ViewAction::make()->label('Detail')
                 ->modalHeading('')
@@ -227,10 +237,10 @@ class PencairanDanaOperasional extends Page implements HasTable
                     if ($allLunasOption && !$anyPaid) {
                         return 'Pembayaran Lunas';
                     }
-                    return 'Pembayaran Selesai'; // Fallback jika data tidak sesuai
+                    return 'Pembayaran Selesai';
                 })
                 ->modalWidth('sm')
-                ->form(function (Pengajuan $record) {
+                ->form(function (Pengajuan $record) use ($getPrivateFileUrl) {
                     $record->load('items.vendorFinal');
                     $totalHarga = $record->items->sum(function ($item) {
                         return $item->vendorFinal ? ($item->vendorFinal->harga ?? 0) * $item->kuantitas : 0;
@@ -252,7 +262,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                                 ->columnSpanFull(),
                         ];
                     }
-
                     $rekeningDetails = [];
                     foreach ($record->items as $item) {
                         if ($item->vendorFinal?->metode_pembayaran === 'Transfer') {
@@ -264,17 +273,14 @@ class PencairanDanaOperasional extends Page implements HasTable
                         }
                     }
                     $rekeningInfo = !empty($rekeningDetails) ? $rekeningDetails[0] : ['nama_bank' => 'N/A', 'no_rekening' => 'N/A', 'nama_rekening' => 'N/A'];
-
                     $hasDpOption = $record->items->some(fn($item) => strtolower(trim($item->vendorFinal?->opsi_pembayaran ?? '')) === 'bisa dp');
                     $allLunasOption = $record->items->every(fn($item) => strtolower(trim($item->vendorFinal?->opsi_pembayaran ?? '')) === 'langsung lunas');
-
                     Log::debug('Form Debug for pengajuan ID: ' . $record->id_pengajuan, [
                         'hasDpOption' => $hasDpOption,
                         'allLunasOption' => $allLunasOption,
                         'anyDpPaid' => $anyDpPaid,
                         'anyPaid' => $anyPaid,
                     ]);
-
                     return [
                         Grid::make(2)->schema([
                             TextInput::make('total_harga')
@@ -312,28 +318,35 @@ class PencairanDanaOperasional extends Page implements HasTable
 
                         FileUpload::make('bukti_dp')
                             ->label('Upload Bukti DP')
-                            ->helperText(function () use ($record) {
-                                $dpItems = $record->items->filter(fn($item) => $item->vendorFinal?->nominal_dp > 0);
-                                if ($dpItems->isEmpty()) return 'Tidak ada DP yang ditentukan.';
-                                $dpValues = $dpItems->map(fn($item) => 'Rp ' . number_format($item->vendorFinal->nominal_dp ?? 0, 0, ',', '.'))
-                                    ->implode(', ');
-                                return 'Nominal DP per item: ' . $dpValues;
+                            ->disk('private')
+                            ->directory('bukti-pembayaran')
+                            ->visibility('private')
+                            ->getUploadedFileNameForStorageUsing(function ($file) use ($record) {
+                                $kode = str_replace('/', '_', $record->kode_pengajuan);
+                                return "{$kode}_BUKTI_DP_" . time() . '.' . $file->getClientOriginalExtension();
                             })
-                            ->directory('bukti-pembayaran')->visibility('private')->required()
+                            ->required()
+                            ->downloadable()
                             ->visible(function () use ($hasDpOption, $anyDpPaid, $anyPaid) {
                                 return $hasDpOption && !$anyDpPaid && !$anyPaid;
                             })
-                            ->columnSpanFull()
-                            ->extraAttributes(['class' => 'mt-4']),
+                            ->columnSpanFull(),
 
                         FileUpload::make('bukti_pelunasan')
                             ->label('Upload Bukti Pelunasan')
-                            ->directory('bukti-pembayaran')->visibility('private')->required()
+                            ->disk('private')
+                            ->directory('bukti-pembayaran')
+                            ->visibility('private')
+                            ->getUploadedFileNameForStorageUsing(function ($file) use ($record) {
+                                $kode = str_replace('/', '_', $record->kode_pengajuan);
+                                return "{$kode}_BUKTI_PELUNASAN_" . time() . '.' . $file->getClientOriginalExtension();
+                            })
+                            ->required()
+                            ->downloadable()
                             ->visible(function () use ($hasDpOption, $anyDpPaid, $anyPaid, $allLunasOption) {
                                 return ($hasDpOption && $anyDpPaid && !$anyPaid) || ($allLunasOption && !$anyPaid);
                             })
-                            ->columnSpanFull()
-                            ->extraAttributes(['class' => 'mt-4']),
+                            ->columnSpanFull(),
 
                         TextInput::make('payment_complete_info')
                             ->label('Status')
@@ -397,7 +410,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                 ->color('info')
                 ->icon('heroicon-o-document-arrow-down')
                 ->action(function (Pengajuan $record) {
-                    // 1. Kumpulkan semua data yang dibutuhkan oleh template
                     $itemsToPay = [];
                     $total = 0;
                     foreach ($record->items as $item) {
@@ -426,13 +438,8 @@ class PencairanDanaOperasional extends Page implements HasTable
                             $total += $subtotal;
                         }
                     }
-
-                    // 2. Tentukan siapa direktur yang approve
-                    // --- Generate QR Code untuk setiap penanda tangan ---
                     $direkturQrCode = null;
                     $kadivGaQrCode = null;
-
-                    // Tentukan siapa direktur yang approve
                     $direktur = null;
                     if ($record->direktur_utama_approved_by) {
                         $direktur = User::find($record->direktur_utama_approved_by);
@@ -441,24 +448,17 @@ class PencairanDanaOperasional extends Page implements HasTable
                         $direktur = User::find($record->direktur_operasional_approved_by);
                         $direkturJabatan = 'Direktur Operasional';
                     }
-
-                    // Generate QR Code untuk Direktur jika ada
                     if ($direktur) {
                         $verificationUrl = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $direktur]);
                         $qrCodeData = QrCode::format('png')->size(80)->margin(1)->generate($verificationUrl);
                         $direkturQrCode = 'data:image/png;base64,' . base64_encode($qrCodeData);
                     }
-
-                    // Generate QR Code untuk Kadiv GA
                     $kadivGa = User::find($record->kadiv_ga_approved_by);
                     if ($kadivGa) {
                         $verificationUrl = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $kadivGa]);
                         $qrCodeData = QrCode::format('png')->size(80)->margin(1)->generate($verificationUrl);
                         $kadivGaQrCode = 'data:image/png;base64,' . base64_encode($qrCodeData);
                     }
-
-
-                    // 3. Siapkan semua data dalam satu array untuk dikirim ke view
                     $data = [
                         'kode_pengajuan' => $record->kode_pengajuan,
                         'tanggal_pengajuan' => $record->created_at->translatedFormat('d F Y'),

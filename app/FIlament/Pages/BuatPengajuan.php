@@ -95,6 +95,8 @@ class BuatPengajuan extends Page implements HasForms
                                         '2c. Kendaraan Bermotor' => '2c. Kendaraan Bermotor',
                                         '2d. Perlengkapan Kantor Lainnya' => '2d. Perlengkapan Kantor Lainnya',
                                         '2e. Lainnya (Aktiva Berwujud)' => '2e. Lainnya (Aktiva Berwujud)',
+                                        'Jasa' => 'Opsi Jasa',
+                                        'Sewa' => 'Opsi Sewa',
                                     ])->required(),
                                     TextInput::make('nama_barang')->required(),
                                     TextInput::make('kuantitas')->numeric()->required()->minValue(1),
@@ -104,7 +106,6 @@ class BuatPengajuan extends Page implements HasForms
                                 ->columns(2)
                                 ->columnSpanFull()
                                 ->addActionLabel('Tambah Barang')
-                                // === PERBAIKAN DI SINI: Menambahkan validasi ===
                                 ->minItems(1)
                                 ->required()
                                 ->validationMessages([
@@ -117,14 +118,17 @@ class BuatPengajuan extends Page implements HasForms
             ->statePath('data');
     }
 
-    // === PERBAIKAN LOGIKA UTAMA DI SINI ===
+    /**
+     * Method untuk membuat pengajuan baru dengan logika penentuan alur.
+     */
     public function create(): void
     {
+        // 1. Ambil semua data dari form
         $formData = $this->form->getState();
         $pemohon = Auth::user();
-        $statusAwal = ''; // Inisialisasi status
+        $statusAwal = ''; // Inisialisasi status awal
 
-        // Daftar peran pimpinan yang bisa melewati approval awal
+        // 2. Definisikan peran-peran pimpinan yang bisa melewati approval awal
         $pimpinanRoles = [
             'Direktur Utama',
             'Direktur Operasional',
@@ -134,48 +138,56 @@ class BuatPengajuan extends Page implements HasForms
             'Kepala Divisi Operasional'
         ];
 
-        // Cek apakah pemohon adalah seorang Pimpinan
+        // 3. Cek apakah pemohon adalah seorang Pimpinan
         if ($pemohon->hasAnyRole($pimpinanRoles)) {
-            // Jika ya, langsung tentukan alur ke IT atau GA
+            // Jika YA, maka lewati approval Manager/Kadiv
             $needsITRecommendation = false;
             if (isset($formData['items'])) {
                 foreach ($formData['items'] as $item) {
+                    // Cek apakah ada barang yang terkait IT
                     if (in_array($item['kategori_barang'], ['1a. Software', '2a. Komputer & Hardware Sistem Informasi'])) {
                         $needsITRecommendation = true;
                         break;
                     }
                 }
             }
+            // Tentukan alur selanjutnya: ke IT atau langsung ke GA
             $statusAwal = $needsITRecommendation ? Pengajuan::STATUS_REKOMENDASI_IT : Pengajuan::STATUS_SURVEI_GA;
         } else {
-            // Jika bukan Pimpinan, jalankan alur persetujuan normal berdasarkan atasan
+            // Jika BUKAN Pimpinan, jalankan alur persetujuan normal
             $jabatanPemohon = Jabatan::find($pemohon->id_jabatan);
             $hasManagerAsDirectSuperior = false;
 
+            // Cek siapa atasan langsung dari pemohon
             if ($jabatanPemohon && $jabatanPemohon->acc_jabatan_id) {
                 $atasanUser = User::where('id_jabatan', $jabatanPemohon->acc_jabatan_id)->first();
                 if ($atasanUser && $atasanUser->hasRole('Manager')) {
                     $hasManagerAsDirectSuperior = true;
                 }
             }
+
+            // Tentukan status awal berdasarkan jabatan atasan
             $statusAwal = $hasManagerAsDirectSuperior
                 ? Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER
                 : Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV;
         }
 
-        // Buat record Pengajuan
+        // 4. Buat record Pengajuan utama di database
         $pengajuan = Pengajuan::create([
             'kode_pengajuan' => $this->generateKodePengajuan(),
             'id_user_pemohon' => Auth::id(),
             'status' => $statusAwal,
         ]);
 
+        // 5. Buat record untuk setiap item barang yang diajukan
         if (isset($formData['items'])) {
             $pengajuan->items()->createMany($formData['items']);
         }
 
+        // 6. Kosongkan form setelah berhasil
         $this->resetForm();
 
+        // 7. Tampilkan notifikasi sukses
         Notification::make()
             ->title('Pengajuan berhasil dibuat')
             ->body('Pengajuan Anda dengan kode ' . $pengajuan->kode_pengajuan . ' telah dikirim untuk proses persetujuan.')
