@@ -76,7 +76,7 @@ class PencairanDanaOperasional extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('total_nilai')->label('Nilai Pengajuan')->money('IDR'),
+            TextColumn::make('total_nilai')->label('Nilai Pengajuan'),
             BadgeColumn::make('status')
                 ->label('Status Saat Ini')
                 ->color(fn($state) => Pengajuan::getStatusBadgeColor($state)),
@@ -107,16 +107,44 @@ class PencairanDanaOperasional extends Page implements HasTable
         };
         return [
             ViewAction::make()->label('Detail')
-                ->modalHeading('')
+                ->modalHeading(fn(Pengajuan $record): string => "Detail Pengajuan {$record->kode_pengajuan}")
+                ->modalWidth('5xl')
                 ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
-                    $record->load(['items', 'items.surveiHargas', 'pemohon.divisi']);
-                    $data = $record->toArray();
-                    $data['estimasi_pengadaan'] = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
-                    $data['estimasi_perbaikan'] = 'Rp ' . number_format($record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0), 0, ',', '.');
-                    $data['nama_divisi'] = $record->pemohon->divisi->nama_divisi ?? 'Tidak tersedia';
-                    $data['nama_barang'] = $record->items->pluck('nama_barang')->implode(', ') ?: 'Tidak tersedia';
-                    $data['catatan_revisi'] = $record->catatan_revisi ?? 'Tidak ada riwayat catatan approval.';
-                    $form->fill($data);
+                    $record->load([
+                        'items.vendorFinal',
+                        'items.surveiHargas',
+                        'pemohon.divisi'
+                    ]);
+
+                    $formData = $record->toArray();
+                    $formData['items_with_final_vendor'] = $record->items->filter(fn($item) => $item->vendorFinal)->values()->toArray();
+
+                    $getScenarioDetails = function ($items, $tipeSurvei) {
+                        $details = [];
+                        $totalCost = 0;
+                        foreach ($items as $item) {
+                            $cheapestSurvey = $item->surveiHargas->where('tipe_survei', $tipeSurvei)->sortBy('harga')->first();
+                            if (!$cheapestSurvey) continue;
+                            $itemCost = $cheapestSurvey->harga * $item->kuantitas;
+                            $taxInfo = 'Tidak ada pajak';
+                            $taxCost = 0;
+                            if ($cheapestSurvey->kondisi_pajak === 'Pajak ditanggung kita') {
+                                $taxCost = $cheapestSurvey->nominal_pajak;
+                                $taxInfo = ($cheapestSurvey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
+                            }
+                            $details[] = [
+                                'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
+                                'harga_vendor' => 'Rp ' . number_format($itemCost, 0, ',', '.'),
+                                'pajak_info' => $taxInfo,
+                            ];
+                            $totalCost += ($itemCost + $taxCost);
+                        }
+                        return empty($details) ? null : ['details' => $details, 'total' => 'Rp ' . number_format($totalCost, 0, ',', '.')];
+                    };
+                    $formData['pengadaan_details'] = $getScenarioDetails($record->items, 'Pengadaan');
+                    $formData['perbaikan_details'] = $getScenarioDetails($record->items, 'Perbaikan');
+
+                    $form->fill($formData);
                 })
                 ->form([
                     Section::make('Detail Pengajuan')
@@ -129,79 +157,142 @@ class PencairanDanaOperasional extends Page implements HasTable
                                 TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
                             ]),
                             Repeater::make('items')->relationship()->label('')->schema([
-                                Grid::make(6)->schema([
-                                    TextInput::make('kategori_barang')->disabled()->columnSpan(2),
-                                    TextInput::make('nama_barang')->disabled()->columnSpan(3),
-                                    TextInput::make('kuantitas')->disabled()->columnSpan(1),
+                                Grid::make(3)->schema([
+                                    TextInput::make('kategori_barang')->disabled(),
+                                    TextInput::make('nama_barang')->disabled(),
+                                    TextInput::make('kuantitas')->disabled(),
                                 ]),
                                 Grid::make(2)->schema([
                                     Textarea::make('spesifikasi')->disabled(),
                                     Textarea::make('justifikasi')->disabled(),
                                 ]),
-                            ])->columns(2)->disabled()->addActionLabel('Tambah Barang'),
-                        ]),
-                    Section::make('Vendor Harga Final yang Di-approve')
-                        ->schema(function (Pengajuan $record) {
-                            Log::debug('Processing Vendor Harga Final for pengajuan ID: ' . $record->id_pengajuan);
+                            ])->columns(1)->disabled()->addActionLabel('Tambah Barang'),
+                        ])->collapsible()->collapsed(),
 
-                            $firstItem = $record->items->first();
-                            if (!$firstItem) {
-                                return [
-                                    Placeholder::make('no_item_placeholder')
-                                        ->content('Tidak ada item terkait untuk pengajuan ini.')
-                                        ->columnSpanFull(),
-                                ];
-                            }
+                    Section::make('Rincian Estimasi Biaya - Skenario PENGADAAN')
+                        ->schema([
+                            Repeater::make('pengadaan_details.details')
+                                ->label('')
+                                ->schema([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('nama_barang')->label('Item')->disabled(),
+                                        TextInput::make('harga_vendor')->label('Harga dari Vendor')->disabled(),
+                                        TextInput::make('pajak_info')->label('Pajak Ditanggung Perusahaan')->disabled(),
+                                    ])
+                                ])->disabled()->disableItemCreation()->disableItemDeletion()->disableItemMovement(),
 
-                            $surveiHarga = SurveiHarga::where('id_item', $firstItem->id_item)
-                                ->where('is_final', 1)
-                                ->first();
+                            Placeholder::make('pengadaan_details.total')
+                                ->label('TOTAL ESTIMASI BIAYA PENGADAAN')
+                                ->content(fn($get) => new HtmlString('<b class="text-xl text-primary-600">' . $get('pengadaan_details.total') . '</b>')),
+                        ])->collapsible()->collapsed(),
 
-                            if (!$surveiHarga) {
-                                return [
-                                    Placeholder::make('no_final_vendor_placeholder')
-                                        ->content('Tidak ada data vendor final untuk id_item = ' . $firstItem->id_item . '.')
-                                        ->columnSpanFull(),
-                                ];
-                            }
+                    Section::make('Rincian Estimasi Biaya - Skenario PERBAIKAN')
+                        ->schema([
+                            Repeater::make('perbaikan_details.details')
+                                ->label('')
+                                ->schema([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('nama_barang')->label('Item')->disabled(),
+                                        TextInput::make('harga_vendor')->label('Harga dari Vendor')->disabled(),
+                                        TextInput::make('pajak_info')->label('Pajak Ditanggung Perusahaan')->disabled(),
+                                    ])
+                                ])->disabled()->disableItemCreation()->disableItemDeletion()->disableItemMovement(),
 
-                            $data = [
-                                'nama_barang' => $surveiHarga->item->nama_barang ?? 'N/A',
-                                'nama_vendor' => $surveiHarga->nama_vendor ?? 'N/A',
-                                'harga' => 'Rp ' . number_format($surveiHarga->harga ?? 0, 0, ',', '.'),
-                                'metode_pembayaran' => $surveiHarga->metode_pembayaran ?? 'N/A',
-                                'opsi_pembayaran' => $surveiHarga->opsi_pembayaran ?? 'N/A',
-                            ];
+                            Placeholder::make('perbaikan_details.total')
+                                ->label('TOTAL ESTIMASI BIAYA PERBAIKAN')
+                                ->content(fn($get) => new HtmlString('<b class="text-xl text-primary-600">' . $get('perbaikan_details.total') . '</b>')),
+                        ])
+                        ->visible(fn($get) => !is_null($get('perbaikan_details')) && !empty($get('perbaikan_details')['details']))
+                        ->collapsible()->collapsed(),
 
-                            $content = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0; color: #333; background-color: #fff;">'
-                                . '<thead><tr>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Nama Barang</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Nama Vendor</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Harga</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Metode Pembayaran</th>'
-                                . '<th style="border: 1px solid #ccc; padding: 8px; font-weight: bold;">Opsi Pembayaran</th>'
-                                . '</tr></thead>'
-                                . '<tbody><tr>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_barang']) . '</td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['nama_vendor']) . '</td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['harga']) . ' <span style="color: #888; font-size: 15px;">/ Item</span></td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['metode_pembayaran']) . '</td>'
-                                . '<td style="border: 1px solid #ccc; padding: 8px;">' . htmlspecialchars($data['opsi_pembayaran']) . '</td>'
-                                . '</tr></tbody>'
-                                . '</table>';
+                    Section::make('Review Budgeting')
+                        ->schema([
+                            Grid::make(2)->schema([
+                                TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled(),
+                                Textarea::make('budget_catatan_pengadaan')->label('Catatan Budget Pengadaan')->disabled(),
 
-                            return [
-                                Placeholder::make('final_vendor_data')
-                                    ->content(new HtmlString($content))
-                                    ->columnSpanFull(),
-                            ];
-                        })
+                            ]),
+                            Grid::make(2)->schema([
+                                TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled(),
+                                Textarea::make('budget_catatan_perbaikan')->label('Catatan Budget Perbaikan')->disabled(),
+                            ])->visible(fn($get) => !is_null($get('budget_status_perbaikan'))),
+                        ])->collapsible()->collapsed(),
+
+                    Section::make('Final Approve')
+                        ->schema([
+                            Grid::make(2)->schema([
+                                TextInput::make('kadiv_ga_decision_type')
+                                    ->label('Keputusan Kadiv GA')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('kadiv_ga_decision_type') ?? 'Tidak Diketahui'),
+                                Textarea::make('kadiv_ga_catatan')
+                                    ->label('Catatan Kadiv GA')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('kadiv_ga_catatan') ?? 'Tidak ada catatan'),
+                            ]),
+                            Grid::make(2)->schema([
+                                TextInput::make('direktur_operasional_decision_type')
+                                    ->label('Keputusan Direktur Operasional')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('direktur_operasional_decision_type') ?? 'Tidak Diketahui'),
+                                Textarea::make('direktur_operasional_catatan')
+                                    ->label('Catatan Direktur Operasional')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('direktur_operasional_catatan') ?? 'Tidak ada catatan'),
+                            ])->visible(fn($get) => !empty($get('direktur_operasional_decision_type')) || !empty($get('direktur_operasional_catatan'))),
+                            Grid::make(2)->schema([
+                                TextInput::make('direktur_utama_decision_type')
+                                    ->label('Keputusan Direktur Utama')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('direktur_utama_decision_type') ?? 'Tidak Diketahui'),
+                                Textarea::make('direktur_utama_catatan')
+                                    ->label('Catatan Direktur Utama')
+                                    ->disabled()
+                                    ->default(fn($get) => $get('direktur_utama_catatan') ?? 'Tidak ada catatan'),
+                            ])->visible(fn($get) => !empty($get('direktur_utama_decision_type')) || !empty($get('direktur_utama_catatan'))),
+                        ])
                         ->visible(fn(Pengajuan $record) => in_array($record->status, [
                             Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
                             Pengajuan::STATUS_SUDAH_BAYAR,
                             Pengajuan::STATUS_SELESAI,
                         ]))
+                        ->collapsed()
                         ->columnSpanFull(),
+
+                    Section::make('Vendor & Harga Final yang Disetujui')
+                        ->schema([
+                            Repeater::make('items_with_final_vendor')
+                                ->label('')
+                                ->schema([
+                                    Grid::make(5)->schema([
+                                        TextInput::make('nama_barang')
+                                            ->label('Nama Barang')
+                                            ->disabled(),
+                                        TextInput::make('vendor_final.nama_vendor')
+                                            ->label('Nama Vendor')
+                                            ->disabled(),
+                                        // --- PERBAIKAN DI SINI ---
+                                        TextInput::make('vendor_final.harga')
+                                            ->label('Harga Satuan')
+                                            ->prefix('Rp') // Gunakan prefix untuk 'Rp'
+                                            // Format angka dengan pemisah ribuan
+                                            ->formatStateUsing(fn(?string $state): string => number_format($state, 0, ',', '.'))
+                                            ->disabled(),
+                                        TextInput::make('vendor_final.metode_pembayaran')
+                                            ->label('Metode Bayar')
+                                            ->disabled(),
+                                        TextInput::make('vendor_final.opsi_pembayaran')
+                                            ->label('Opsi Bayar')
+                                            ->disabled(),
+                                    ]),
+                                ])
+                                ->disabled()
+                                ->disableItemCreation()
+                                ->disableItemDeletion()
+                                ->disableItemMovement(),
+                        ])
+                        ->collapsible()
+                        ->visible(fn($get) => !empty($get('items_with_final_vendor'))),
                 ]),
             Action::make('payment')
                 ->label('Pembayaran')

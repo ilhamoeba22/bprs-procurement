@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SurveiHarga extends Model
 {
     use HasFactory;
+
     protected $fillable = [
         'id_item',
         'tipe_survei',
@@ -35,8 +37,39 @@ class SurveiHarga extends Model
         'rincian_harga',
     ];
 
-    public function item(): BelongsTo
+    /**
+     * Mendapatkan PengajuanItem terkait.
+     */
+    public function pengajuanItem(): BelongsTo
     {
         return $this->belongsTo(PengajuanItem::class, 'id_item');
+    }
+
+    /**
+     * Mendapatkan revisi harga untuk survei ini.
+     */
+    public function revisiHargas(): HasMany
+    {
+        return $this->hasMany(RevisiHarga::class, 'survei_harga_id');
+    }
+
+    /**
+     * Mendapatkan revisi harga terbaru.
+     */
+    public function latestRevisi(): ?RevisiHarga
+    {
+        return $this->revisiHargas()->latest('tanggal_revisi')->first();
+    }
+
+    /**
+     * Memeriksa apakah harga survei dapat direvisi.
+     */
+    public function canBeRevised(): bool
+    {
+        return !$this->is_final &&
+            $this->tipe_survei === 'Pengadaan' &&
+            $this->pengajuanItem &&
+            $this->pengajuanItem->pengajuan &&
+            $this->pengajuanItem->pengajuan->canRevisePrice();
     }
 }

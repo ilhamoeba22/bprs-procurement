@@ -62,6 +62,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                             Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
                             Pengajuan::STATUS_SUDAH_BAYAR,
                             Pengajuan::STATUS_SELESAI,
+                            Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
                         ])->where('kadiv_ga_approved_by', $user->id_user);
                     });
             });
@@ -74,6 +75,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                 Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
                 Pengajuan::STATUS_SUDAH_BAYAR,
                 Pengajuan::STATUS_SELESAI,
+                Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
             ]);
         }
 
@@ -268,6 +270,8 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                             Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
                             Pengajuan::STATUS_SUDAH_BAYAR,
                             Pengajuan::STATUS_SELESAI,
+                            Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
+                            Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS,
                         ]))
                         ->collapsible()->collapsed(),
                 ]),

@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Facades\Log;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Log;
 
 class Pengajuan extends Model
 {
@@ -55,6 +55,7 @@ class Pengajuan extends Model
     public const STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL = 'Menunggu Approval Direktur Operasional';
     public const STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA = 'Menunggu Approval Direktur Utama';
     public const STATUS_MENUNGGU_PENCARIAN_DANA = 'Menunggu Pencarian Dana';
+    public const STATUS_MENUNGGU_PELUNASAN = 'Menunggu Pelunasan';
     public const STATUS_SUDAH_BAYAR = 'Sudah Bayar';
     public const STATUS_SELESAI = 'Selesai';
     public const STATUS_DITOLAK_MANAGER = 'Ditolak oleh Manager';
@@ -63,62 +64,102 @@ class Pengajuan extends Model
     public const STATUS_DITOLAK_DIREKTUR_OPERASIONAL = 'Ditolak oleh Direktur Operasional';
     public const STATUS_DITOLAK_DIREKTUR_UTAMA = 'Ditolak oleh Direktur Utama';
 
+
+    // REVISI STATUS
+    public const STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI = 'Menunggu Persetujuan Budget (Revisi)';
+    public const STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS = 'Menunggu Validasi Budget (Revisi) Kadiv Operasional';
+
+    /**
+     * Get the user who submitted the pengajuan.
+     */
     public function pemohon(): BelongsTo
     {
         return $this->belongsTo(User::class, 'id_user_pemohon', 'id_user');
     }
 
+    /**
+     * Get the items associated with the pengajuan.
+     */
     public function items(): HasMany
     {
         return $this->hasMany(PengajuanItem::class, 'id_pengajuan', 'id_pengajuan');
     }
 
+    /**
+     * Get the manager who approved the pengajuan.
+     */
     public function approverManager(): BelongsTo
     {
         return $this->belongsTo(User::class, 'manager_approved_by', 'id_user');
     }
 
+    /**
+     * Get the head of division who approved the pengajuan.
+     */
     public function approverKadiv(): BelongsTo
     {
         return $this->belongsTo(User::class, 'kadiv_approved_by', 'id_user');
     }
 
+    /**
+     * Get the IT recommender for the pengajuan.
+     */
     public function recommenderIt(): BelongsTo
     {
         return $this->belongsTo(User::class, 'it_recommended_by', 'id_user');
     }
 
+    /**
+     * Get the GA surveyor for the pengajuan.
+     */
     public function surveyorGa(): BelongsTo
     {
         return $this->belongsTo(User::class, 'ga_surveyed_by', 'id_user');
     }
 
+    /**
+     * Get the budget approver for the pengajuan.
+     */
     public function approverBudget(): BelongsTo
     {
         return $this->belongsTo(User::class, 'budget_approved_by', 'id_user');
     }
 
+    /**
+     * Get the operational division head who approved the budget.
+     */
     public function validatorBudgetOps(): BelongsTo
     {
         return $this->belongsTo(User::class, 'kadiv_ops_budget_approved_by', 'id_user');
     }
 
+    /**
+     * Get the GA division head who approved the pengajuan.
+     */
     public function approverKadivGa(): BelongsTo
     {
         return $this->belongsTo(User::class, 'kadiv_ga_approved_by', 'id_user');
     }
 
+    /**
+     * Get the operational director who approved the pengajuan.
+     */
     public function approverDirOps(): BelongsTo
     {
         return $this->belongsTo(User::class, 'direktur_operasional_approved_by', 'id_user');
     }
 
+    /**
+     * Get the main director who approved the pengajuan.
+     */
     public function approverDirUtama(): BelongsTo
     {
         return $this->belongsTo(User::class, 'direktur_utama_approved_by', 'id_user');
     }
 
-    // Metode statis untuk mendapatkan warna badge berdasarkan status
+    /**
+     * Determine the badge color based on the status.
+     */
     public static function getStatusBadgeColor($status): string
     {
         Log::debug('Determining badge color for status: ' . $status);
@@ -159,7 +200,57 @@ class Pengajuan extends Model
             return 'success';
         }
 
-        // Fallback untuk status tidak dikenali
-        return 'warning';
+        return 'warning'; // Fallback for unrecognized status
+    }
+
+    /**
+     * Check if the pengajuan requires a down payment.
+     */
+    public function needsDownPayment(): bool
+    {
+        return $this->items()
+            ->whereHas('surveiHargas', function ($query) {
+                $query->where('tipe_survei', 'Pengadaan')
+                    ->where('opsi_pembayaran', 'Bisa DP')
+                    ->where('is_final', true);
+            })
+            ->exists();
+    }
+
+    /**
+     * Check if the pengajuan price can be revised.
+     */
+    public function canRevisePrice(): bool
+    {
+        // 1. Cek apakah status saat ini mengizinkan revisi
+        if (!in_array($this->status, [self::STATUS_MENUNGGU_PENCARIAN_DANA, self::STATUS_MENUNGGU_PELUNASAN])) {
+            return false;
+        }
+
+        // 2. Cek apakah ini kasus DP (yang seharusnya tidak bisa direvisi)
+        if ($this->needsDownPayment()) {
+            return false;
+        }
+
+        // 3. Cari survei final untuk pengajuan ini
+        $finalSurvey = $this->items()
+            ->with('surveiHargas.revisiHargas')
+            ->get()
+            ->flatMap(fn($item) => $item->surveiHargas)
+            ->where('is_final', true)
+            ->first();
+
+        // Jika tidak ada survei final, cegah revisi.
+        if (!$finalSurvey) {
+            return false;
+        }
+
+        // 4. Jika survei final sudah memiliki data revisi, jangan tampilkan tombol lagi.
+        if ($finalSurvey->revisiHargas()->exists()) {
+            return false;
+        }
+
+        // Jika semua pengecekan lolos, izinkan revisi.
+        return true;
     }
 }

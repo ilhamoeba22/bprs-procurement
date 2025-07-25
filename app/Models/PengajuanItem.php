@@ -7,35 +7,76 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class PengajuanItem extends Model
 {
     use HasFactory;
-    protected $primaryKey = 'id_item';
-    protected $fillable = ['id_pengajuan', 'kategori_barang', 'nama_barang', 'kuantitas', 'spesifikasi', 'justifikasi', 'harga_final'];
 
+    protected $primaryKey = 'id_item';
+    protected $fillable = [
+        'id_pengajuan',
+        'kategori_barang',
+        'nama_barang',
+        'kuantitas',
+        'spesifikasi',
+        'justifikasi',
+        'harga_final',
+    ];
+
+    /**
+     * Get the related Pengajuan.
+     */
     public function pengajuan(): BelongsTo
     {
         return $this->belongsTo(Pengajuan::class, 'id_pengajuan', 'id_pengajuan');
     }
 
+    /**
+     * Get the survey prices associated with this item.
+     */
     public function surveiHargas(): HasMany
     {
         return $this->hasMany(SurveiHarga::class, 'id_item');
     }
 
+    /**
+     * Get the survey prices for procurement (Pengadaan).
+     */
     public function surveiPengadaan(): HasMany
     {
         return $this->surveiHargas()->where('tipe_survei', 'Pengadaan');
     }
 
+    /**
+     * Get the survey prices for repair (Perbaikan).
+     */
     public function surveiPerbaikan(): HasMany
     {
         return $this->surveiHargas()->where('tipe_survei', 'Perbaikan');
     }
 
+    /**
+     * Get the final vendor survey price.
+     */
     public function vendorFinal(): HasOne
     {
-        return $this->hasOne(SurveiHarga::class, 'id_item')->where('is_final', 1);
+        return $this->hasOne(SurveiHarga::class, 'id_item')->where('is_final', true);
+    }
+
+    /**
+     * Get all revisions for the item through survey prices.
+     */
+    // v-- 2. TAMBAHKAN METHOD BARU INI --v
+    public function semuaRevisiHarga(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            RevisiHarga::class, // Model tujuan akhir
+            SurveiHarga::class, // Model perantara
+            'id_item',          // Foreign key di tabel perantara (survei_hargas)
+            'survei_harga_id',  // Foreign key di tabel tujuan akhir (revisi_hargas)
+            'id_item',          // Local key di model ini (pengajuan_items)
+            'id'                // Local key di tabel perantara (survei_hargas)
+        );
     }
 }
