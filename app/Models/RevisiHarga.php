@@ -31,6 +31,9 @@ class RevisiHarga extends Model
         'revisi_budget_status_perbaikan',
         'revisi_budget_catatan_perbaikan',
         'revisi_budget_approved_by',
+        'revisi_kadiv_ga_decision_type',
+        'revisi_kadiv_ga_catatan',
+        'revisi_kadiv_ga_approved_by',
     ];
 
     protected $casts = [
@@ -61,5 +64,10 @@ class RevisiHarga extends Model
     public function revisiBudgetApprover(): BelongsTo
     {
         return $this->belongsTo(User::class, 'revisi_budget_approved_by', 'id_user');
+    }
+    // --- TAMBAHKAN METHOD BARU INI ---
+    public function revisiKadivGaApprover(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'revisi_kadiv_ga_approved_by', 'id_user');
     }
 }

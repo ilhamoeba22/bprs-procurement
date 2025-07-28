@@ -68,6 +68,7 @@ class Pengajuan extends Model
     // REVISI STATUS
     public const STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI = 'Menunggu Persetujuan Budget (Revisi)';
     public const STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS = 'Menunggu Validasi Budget (Revisi) Kadiv Operasional';
+    public const STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI = 'Menunggu Approval Kadiv GA (Revisi)';
 
     /**
      * Get the user who submitted the pengajuan.

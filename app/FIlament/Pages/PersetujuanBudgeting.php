@@ -48,25 +48,23 @@ class PersetujuanBudgeting extends Page implements HasTable
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
-        $query = Pengajuan::query()->with(['pemohon.divisi', 'items.surveiHargas']);
+        $query = Pengajuan::query()->with(['pemohon.divisi', 'items.surveiHargas.revisiHargas']);
         $statuses = [
             Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
             Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET,
             Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
+            Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS, // Ditambahkan agar bisa diedit
         ];
-
         if (!$user->hasRole('Super Admin')) {
             $query->where(function (Builder $q) use ($user, $statuses) {
-                $q->whereIn('status', $statuses)
-                    ->orWhere('budget_approved_by', $user->id_user);
+                $q->whereIn('status', $statuses)->orWhere('budget_approved_by', $user->id_user);
             });
         } else {
-            $query->whereIn('status', $statuses)
-                ->orWhereNotNull('budget_approved_by');
+            $query->whereIn('status', $statuses)->orWhereNotNull('budget_approved_by');
         }
-
         return $query->latest();
     }
+
 
     protected function getTableColumns(): array
     {
@@ -130,13 +128,21 @@ class PersetujuanBudgeting extends Page implements HasTable
     protected function getBudgetReviewFormSchema(Pengajuan $record): array
     {
         $hasPerbaikan = $record->items->flatMap->surveiHargas->where('tipe_survei', 'Perbaikan')->isNotEmpty();
+        $revisi = null;
 
-        if ($record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI) {
+        // Cek apakah konteksnya adalah revisi
+        if (in_array($record->status, [
+            Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
+            Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS
+        ])) {
             $finalSurvey = $record->items->flatMap->surveiHargas->where('is_final', true)->first();
             $revisi = $finalSurvey ? $finalSurvey->revisiHargas->first() : null;
-            $totalPengadaan = $revisi ? $revisi->harga_revisi : 0;
-            $totalPerbaikan = 0;
-        } else {
+        }
+
+        if ($revisi) { // Jika ini adalah alur revisi
+            $totalPengadaan = $revisi->harga_revisi;
+            $totalPerbaikan = 0; // Asumsikan revisi hanya untuk pengadaan
+        } else { // Jika ini alur awal
             $totalPengadaan = $record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Pengadaan')->min('harga') ?? 0) * $i->kuantitas), 0);
             $totalPerbaikan = $record->items->reduce(fn($c, $i) => $c + (($i->surveiHargas->where('tipe_survei', 'Perbaikan')->min('harga') ?? 0) * $i->kuantitas), 0);
         }
@@ -149,8 +155,13 @@ class PersetujuanBudgeting extends Page implements HasTable
                         'Budget Tersedia' => 'Budget Tersedia',
                         'Budget Habis' => 'Budget Habis',
                         'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB'
-                    ])->default($record->budget_status_pengadaan)->required(),
-                    Textarea::make('budget_catatan_pengadaan')->label('Catatan')->default($record->budget_catatan_pengadaan)->required(),
+                    ])
+                        // Secara cerdas mengambil default dari data revisi jika ada, jika tidak dari data pengajuan awal
+                        ->default($revisi?->revisi_budget_status_pengadaan ?? $record->budget_status_pengadaan)
+                        ->required(),
+                    Textarea::make('budget_catatan_pengadaan')->label('Catatan')
+                        ->default($revisi?->revisi_budget_catatan_pengadaan ?? $record->budget_catatan_pengadaan)
+                        ->required(),
                 ]),
             Section::make('Review Budget untuk Skenario PERBAIKAN')
                 ->description('Estimasi Biaya: Rp ' . number_format($totalPerbaikan, 0, ',', '.'))
@@ -162,7 +173,7 @@ class PersetujuanBudgeting extends Page implements HasTable
                     ])->default($record->budget_status_perbaikan)->required($hasPerbaikan),
                     Textarea::make('budget_catatan_perbaikan')->label('Catatan')->default($record->budget_catatan_perbaikan)->required($hasPerbaikan),
                 ])
-                ->visible($hasPerbaikan && $record->status !== Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI),
+                ->visible($hasPerbaikan && !$revisi), // Sembunyikan jika sedang dalam alur revisi
         ];
     }
 
@@ -249,7 +260,6 @@ class PersetujuanBudgeting extends Page implements HasTable
                         ])->visible(fn($get) => !empty($get('rekomendasi_it_tipe'))),
                         Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled(),
                     ])->collapsible()->collapsed(),
-
                     // --- SECTION BARU: HASIL SURVEI HARGA ---
                     Section::make('Rincian Estimasi Biaya - Skenario PENGADAAN')
                         ->schema([
@@ -294,8 +304,6 @@ class PersetujuanBudgeting extends Page implements HasTable
                             TextInput::make('approverBudget.nama_user')->label('Direview Oleh')->disabled(),
                         ]),
                     ])->visible(fn($get) => !empty($get('budget_status_pengadaan')))->collapsible()->collapsed(),
-
-
                     // FINAL APPROVLE SECTION
                     Section::make('Final Approve')
                         ->schema([
@@ -357,37 +365,29 @@ class PersetujuanBudgeting extends Page implements HasTable
                         ])->disabled()->disableItemCreation()->disableItemDeletion()->disableItemMovement(),
                     ])->collapsible()->collapsed()->visible(fn($get) => !empty($get('items_with_final_vendor'))),
 
-
                     // --- SECTION DETAIL REVISI & REVIEW BUDGET REVISI (DIGABUNG & DIPERBAIKI) ---
                     Section::make('Detail Revisi & Review Budget Ulang')
                         ->schema([
-                            // Detail Revisi Harga
+                            // Bagian 1: Detail Revisi Harga
                             Grid::make(3)->schema([
-                                TextInput::make('revisi_data.harga_revisi')
-                                    ->label('Harga Setelah Revisi')
-                                    ->prefix('Rp')
-                                    ->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))
-                                    ->disabled(),
-                                // TextInput::make('revisi_data.direvisi_oleh.nama_user')->label('Harga Direvisi Oleh')->disabled(),
-                                TextInput::make('revisi_data.tanggal_revisi')
-                                    ->label('Tanggal Revisi')
-                                    ->formatStateUsing(fn($state) => $state ? Carbon::parse($state)->format('Y-m-d') : null)
-                                    ->disabled(),
-                                Textarea::make('revisi_data.alasan_revisi')->label('Alasan Revisi Harga')->disabled(),
+                                TextInput::make('revisi_data.harga_revisi')->label('Harga Setelah Revisi')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->disabled(),
+                                TextInput::make('revisi_data.direvisi_oleh.nama_user')->label('Harga Direvisi Oleh')->disabled(),
+                                TextInput::make('revisi_data.tanggal_revisi')->label('Tanggal Revisi')->formatStateUsing(fn($state) => $state ? Carbon::parse($state)->format('Y-m-d') : null)->disabled(),
                             ]),
+                            Textarea::make('revisi_data.alasan_revisi')->label('Alasan Revisi Harga')->disabled(),
 
-                            // Garis Pemisah
-                            Placeholder::make('')->label(false)->content(new HtmlString('<hr class="my-1"/>')),
-                            // Detail Review Budget Revisi
-                            Grid::make(3)->schema([
-                                TextInput::make('revisi_data.revisi_budget_status_pengadaan')->label('Status Budget Revisi')->disabled(),
-                                Textarea::make('revisi_data.revisi_budget_catatan_pengadaan')->label('Catatan Budget Revisi')->disabled(),
-                                TextInput::make('revisi_data.revisi_budget_approver.nama_user')->label('Budget Revisi Direview Oleh')->disabled(),
+                            // Bagian 2: Hasil Review Budget Revisi
+                            Grid::make(1)->schema([
+                                Grid::make(3)->schema([
+                                    TextInput::make('revisi_data.revisi_budget_status_pengadaan')->label('Status Budget Revisi')->disabled(),
+                                    Textarea::make('revisi_data.revisi_budget_catatan_pengadaan')->label('Catatan Budget Revisi')->disabled(),
+                                    TextInput::make('revisi_data.revisi_budget_approver.nama_user')->label('Budget Revisi Direview Oleh')->disabled(),
+                                ]),
                             ]),
                         ])
                         ->collapsible()->collapsed()
-                        // ->visible(fn($get) => !empty($get('revisi_data'))),
-                        ->visible(fn($get) => ($get('status') ?? null) === Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI),
+                        // Kondisi diubah menjadi: Tampilkan HANYA JIKA review budget revisi sudah disubmit
+                        ->visible(fn($get) => !empty($get('revisi_data.revisi_budget_status_pengadaan'))),
                 ]),
 
             // AKSI 2: Untuk review awal
@@ -406,6 +406,20 @@ class PersetujuanBudgeting extends Page implements HasTable
                     Notification::make()->title('Review budget berhasil disubmit')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET),
+            // AKSI 4: Untuk edit review
+            Action::make('edit_budget_review')
+                ->label('Edit Review Budget')->color('warning')->icon('heroicon-o-pencil')
+                ->form(fn(Pengajuan $record) => $this->getBudgetReviewFormSchema($record))
+                ->action(function (array $data, Pengajuan $record) {
+                    $record->update([
+                        'budget_status_pengadaan' => $data['budget_status_pengadaan'],
+                        'budget_catatan_pengadaan' => $data['budget_catatan_pengadaan'],
+                        'budget_status_perbaikan' => $data['budget_status_perbaikan'] ?? null,
+                        'budget_catatan_perbaikan' => $data['budget_catatan_perbaikan'] ?? null,
+                    ]);
+                    Notification::make()->title('Review budget berhasil diupdate')->success()->send();
+                })
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET),
 
             Action::make('submit_revisi_budget_review')
                 ->label('Submit Review Revisi')->color('success')->icon('heroicon-o-check-badge')
@@ -427,21 +441,26 @@ class PersetujuanBudgeting extends Page implements HasTable
                     Notification::make()->title('Review budget revisi berhasil disubmit')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI),
-
-            // AKSI 4: Untuk edit review
-            Action::make('edit_budget_review')
-                ->label('Edit Review Budget')->color('warning')->icon('heroicon-o-pencil')
+            // --- AKSI BARU UNTUK EDIT REVIEW REVISI ---
+            Action::make('edit_revisi_budget_review')
+                ->label('Edit Review Revisi')
+                ->color('warning')->icon('heroicon-o-pencil')
                 ->form(fn(Pengajuan $record) => $this->getBudgetReviewFormSchema($record))
                 ->action(function (array $data, Pengajuan $record) {
-                    $record->update([
-                        'budget_status_pengadaan' => $data['budget_status_pengadaan'],
-                        'budget_catatan_pengadaan' => $data['budget_catatan_pengadaan'],
-                        'budget_status_perbaikan' => $data['budget_status_perbaikan'] ?? null,
-                        'budget_catatan_perbaikan' => $data['budget_catatan_perbaikan'] ?? null,
-                    ]);
-                    Notification::make()->title('Review budget berhasil diupdate')->success()->send();
+                    $revisi = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas?->first();
+                    if ($revisi) {
+                        $revisi->update([
+                            'revisi_budget_status_pengadaan' => $data['budget_status_pengadaan'],
+                            'revisi_budget_catatan_pengadaan' => $data['budget_catatan_pengadaan'],
+                        ]);
+                        Notification::make()->title('Review budget revisi berhasil diupdate')->success()->send();
+                    } else {
+                        Notification::make()->title('Gagal menemukan data revisi untuk diupdate')->danger()->send();
+                    }
+                    // Status pengajuan tidak berubah karena ini hanya edit
                 })
-                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET),
+                // Tombol ini hanya muncul jika status sedang menunggu validasi Kadiv Ops
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS),
         ];
     }
 }
