@@ -74,9 +74,34 @@ class PencairanDanaOperasional extends Page implements HasTable
     protected function getTableColumns(): array
     {
         return [
-            TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->searchable(),
+            TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('total_nilai')->label('Nilai Pengajuan'),
+            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
+            // --- KOLOM TOTAL NILAI DENGAN LOGIKA PERMANEN ---
+            TextColumn::make('total_nilai')
+                ->label('Total Nilai')
+                ->state(function (Pengajuan $record): ?float {
+                    $revisi = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas?->first();
+                    // Jika ada revisi, nilai revisi menjadi nilai permanen. Jika tidak, gunakan nilai awal.
+                    return $revisi?->harga_revisi ?? $record->total_nilai;
+                })
+                ->money('IDR')
+                ->icon(function (Pengajuan $record): ?string {
+                    $revisiExists = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas()->exists();
+                    return $revisiExists ? 'heroicon-o-arrow-path' : null;
+                })
+                ->color(function (Pengajuan $record): ?string {
+                    $revisiExists = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas()->exists();
+                    return $revisiExists ? 'warning' : null;
+                })
+                ->description(function (Pengajuan $record): ?string {
+                    $revisiExists = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas()->exists();
+                    if ($revisiExists) {
+                        return 'Nilai Awal: ' . number_format($record->total_nilai, 0, ',', '.');
+                    }
+                    return null;
+                })
+                ->sortable(),
             BadgeColumn::make('status')
                 ->label('Status Saat Ini')
                 ->color(fn($state) => Pengajuan::getStatusBadgeColor($state)),

@@ -71,8 +71,9 @@ class PersetujuanBudgeting extends Page implements HasTable
     protected function getTableColumns(): array
     {
         return [
-            TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->sortable()->searchable(),
-            TextColumn::make('pemohon.nama_user')->label('Pemohon')->sortable()->searchable(),
+            TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
+            TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
+            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
 
             // --- KOLOM TOTAL NILAI DENGAN LOGIKA PERMANEN ---
             TextColumn::make('total_nilai')
