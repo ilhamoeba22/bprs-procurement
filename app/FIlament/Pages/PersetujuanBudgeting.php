@@ -25,6 +25,7 @@ use Filament\Tables\Columns\BadgeColumn;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\Placeholder;
 use Filament\Tables\Concerns\InteractsWithTable;
+use App\Filament\Components\RevisiTimelineSection;
 
 class PersetujuanBudgeting extends Page implements HasTable
 {
@@ -185,16 +186,20 @@ class PersetujuanBudgeting extends Page implements HasTable
                 ->modalHeading('Detail Pengajuan')
                 ->modalWidth('5xl')
                 ->mountUsing(function (Form $form, Pengajuan $record) {
-                    // Eager load semua relasi yang dibutuhkan
                     $record->load([
                         'items.surveiHargas.revisiHargas.revisiBudgetApprover',
+                        'items.surveiHargas.revisiHargas.revisiKadivGaApprover',
                         'items.vendorFinal',
                         'pemohon.divisi',
-                        'approverBudget'
+                        'approverBudget',
+                        'validatorBudgetOps',
+                        'approverKadivGa',
+                        'approverDirOps',
+                        'approverDirUtama'
                     ]);
                     $formData = $record->toArray();
 
-                    // --- LOGIKA UNTUK RINCIAN BIAYA (SUDAH ADA) ---
+                    // --- LOGIKA UNTUK RINCIAN BIAYA ---
                     $getScenarioDetails = function ($items, $tipeSurvei) {
                         $details = [];
                         $totalCost = 0;
@@ -219,13 +224,37 @@ class PersetujuanBudgeting extends Page implements HasTable
                     };
                     $formData['pengadaan_details'] = $getScenarioDetails($record->items, 'Pengadaan');
                     $formData['perbaikan_details'] = $getScenarioDetails($record->items, 'Perbaikan');
-                    // --- AKHIR LOGIKA RINCIAN BIAYA ---
 
+                    // --- PERBAIKAN UNTUK DATA REVISI ---
                     $finalSurvey = $record->items->flatMap->surveiHargas->where('is_final', true)->first();
                     $revisi = $finalSurvey ? $finalSurvey->revisiHargas->first() : null;
+                    \Illuminate\Support\Facades\Log::info('Revisi Data:', [
+                        'pengajuan_id' => $record->id_pengajuan,
+                        'finalSurvey' => $finalSurvey ? $finalSurvey->toArray() : null,
+                        'revisi' => $revisi ? $revisi->toArray() : null
+                    ]);
+
                     if ($revisi) {
-                        $formData['revisi_data'] = $revisi->toArray();
+                        // Mapping data revisi ke kunci yang diharapkan oleh RevisiTimelineSection
+                        $formData['revisi_harga_final'] = $revisi->harga_revisi;
+                        $formData['revisi_pajak_final'] = $revisi->nominal_pajak;
+                        $formData['revisi_oleh_user'] = $revisi->direvisiOleh ? $revisi->direvisiOleh->nama_user : 'Tidak Diketahui';
+                        $formData['revisi_alasan_final'] = $revisi->alasan_revisi;
+                        $formData['revisi_tanggal_final'] = $revisi->tanggal_revisi ? Carbon::parse($revisi->tanggal_revisi)->format('Y-m-d') : null;
+                        $formData['revisi_budget_status_pengadaan'] = $revisi->revisi_budget_status_pengadaan;
+                        $formData['revisi_budget_catatan_pengadaan'] = $revisi->revisi_budget_catatan_pengadaan;
+                        $formData['revisi_budget_approver_name'] = $revisi->revisiBudgetApprover ? $revisi->revisiBudgetApprover->nama_user : 'Tidak Diketahui';
+                        $formData['revisi_kadiv_ga_decision'] = $revisi->revisi_kadiv_ga_decision_type;
+                        $formData['revisi_kadiv_ga_catatan'] = $revisi->revisi_kadiv_ga_catatan;
+                        $formData['revisi_kadiv_ga_approver_name'] = $revisi->revisiKadivGaApprover ? $revisi->revisiKadivGaApprover->nama_user : 'Tidak Diketahui';
+                        // Data untuk validasi Kadiv Ops (jika sudah divalidasi)
+                        $formData['revisi_budget_validated_by'] = $record->validatorBudgetOps ? $record->validatorBudgetOps->nama_user : null;
+                        $formData['revisi_budget_validated_at'] = $record->updated_at ? Carbon::parse($record->updated_at)->format('Y-m-d') : null;
+                        $formData['catatan_validasi'] = $record->catatan_revisi;
+                    } else {
+                        \Illuminate\Support\Facades\Log::warning('Tidak ada data revisi untuk pengajuan ID: ' . $record->id_pengajuan);
                     }
+
                     $formData['items_with_final_vendor'] = $record->items->filter(fn($item) => $item->vendorFinal)
                         ->map(fn($item) => [
                             'nama_barang' => $item->nama_barang,
@@ -234,6 +263,7 @@ class PersetujuanBudgeting extends Page implements HasTable
                             'metode_pembayaran' => $item->vendorFinal->metode_pembayaran,
                             'opsi_pembayaran' => $item->vendorFinal->opsi_pembayaran,
                         ])->values()->toArray();
+
                     $form->fill($formData);
                 })
                 ->form([
@@ -365,29 +395,7 @@ class PersetujuanBudgeting extends Page implements HasTable
                         ])->disabled()->disableItemCreation()->disableItemDeletion()->disableItemMovement(),
                     ])->collapsible()->collapsed()->visible(fn($get) => !empty($get('items_with_final_vendor'))),
 
-                    // --- SECTION DETAIL REVISI & REVIEW BUDGET REVISI (DIGABUNG & DIPERBAIKI) ---
-                    Section::make('Detail Revisi & Review Budget Ulang')
-                        ->schema([
-                            // Bagian 1: Detail Revisi Harga
-                            Grid::make(3)->schema([
-                                TextInput::make('revisi_data.harga_revisi')->label('Harga Setelah Revisi')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->disabled(),
-                                TextInput::make('revisi_data.direvisi_oleh.nama_user')->label('Harga Direvisi Oleh')->disabled(),
-                                TextInput::make('revisi_data.tanggal_revisi')->label('Tanggal Revisi')->formatStateUsing(fn($state) => $state ? Carbon::parse($state)->format('Y-m-d') : null)->disabled(),
-                            ]),
-                            Textarea::make('revisi_data.alasan_revisi')->label('Alasan Revisi Harga')->disabled(),
-
-                            // Bagian 2: Hasil Review Budget Revisi
-                            Grid::make(1)->schema([
-                                Grid::make(3)->schema([
-                                    TextInput::make('revisi_data.revisi_budget_status_pengadaan')->label('Status Budget Revisi')->disabled(),
-                                    Textarea::make('revisi_data.revisi_budget_catatan_pengadaan')->label('Catatan Budget Revisi')->disabled(),
-                                    TextInput::make('revisi_data.revisi_budget_approver.nama_user')->label('Budget Revisi Direview Oleh')->disabled(),
-                                ]),
-                            ]),
-                        ])
-                        ->collapsible()->collapsed()
-                        // Kondisi diubah menjadi: Tampilkan HANYA JIKA review budget revisi sudah disubmit
-                        ->visible(fn($get) => !empty($get('revisi_data.revisi_budget_status_pengadaan'))),
+                    RevisiTimelineSection::make(),
                 ]),
 
             // AKSI 2: Untuk review awal

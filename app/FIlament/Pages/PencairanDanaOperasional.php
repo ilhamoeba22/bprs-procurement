@@ -60,11 +60,19 @@ class PencairanDanaOperasional extends Page implements HasTable
 
         if (!$user->hasRole('Super Admin')) {
             $query->where(function (Builder $q) use ($user) {
-                $q->whereIn('status', [Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA, Pengajuan::STATUS_SUDAH_BAYAR])
+                $q->whereIn('status', [
+                    Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                    Pengajuan::STATUS_SUDAH_BAYAR,
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
+                ])
                     ->orWhere('disbursed_by', $user->id_user);
             });
         } else {
-            $query->whereIn('status', [Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA, Pengajuan::STATUS_SUDAH_BAYAR])
+            $query->whereIn('status', [
+                Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                Pengajuan::STATUS_SUDAH_BAYAR,
+                Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
+            ])
                 ->orWhereNotNull('disbursed_by');
         }
 
@@ -76,7 +84,31 @@ class PencairanDanaOperasional extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Tiket Pengajuan')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('total_nilai')->label('Nilai Pengajuan'),
+            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi Pemohon')->searchable(),
+            TextColumn::make('total_nilai')
+                ->label('Total Nilai')
+                ->state(function (Pengajuan $record): ?float {
+                    $revisi = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas?->first();
+                    // Jika ada revisi, nilai revisi menjadi nilai permanen. Jika tidak, gunakan nilai awal.
+                    return $revisi?->harga_revisi ?? $record->total_nilai;
+                })
+                ->money('IDR')
+                ->icon(function (Pengajuan $record): ?string {
+                    $revisiExists = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas()->exists();
+                    return $revisiExists ? 'heroicon-o-arrow-path' : null;
+                })
+                ->color(function (Pengajuan $record): ?string {
+                    $revisiExists = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas()->exists();
+                    return $revisiExists ? 'warning' : null;
+                })
+                ->description(function (Pengajuan $record): ?string {
+                    $revisiExists = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas()->exists();
+                    if ($revisiExists) {
+                        return 'Nilai Awal: ' . number_format($record->total_nilai, 0, ',', '.');
+                    }
+                    return null;
+                })
+                ->sortable(),
             BadgeColumn::make('status')
                 ->label('Status Saat Ini')
                 ->color(fn($state) => Pengajuan::getStatusBadgeColor($state)),
@@ -143,6 +175,13 @@ class PencairanDanaOperasional extends Page implements HasTable
                     };
                     $formData['pengadaan_details'] = $getScenarioDetails($record->items, 'Pengadaan');
                     $formData['perbaikan_details'] = $getScenarioDetails($record->items, 'Perbaikan');
+                    $formData['items_with_final_vendor'] = $record->items->filter(fn($item) => $item->vendorFinal)->map(fn($item) => [
+                        'nama_barang' => $item->nama_barang,
+                        'nama_vendor' => $item->vendorFinal->nama_vendor,
+                        'harga' => $item->vendorFinal->harga,
+                        'metode_pembayaran' => $item->vendorFinal->metode_pembayaran,
+                        'opsi_pembayaran' => $item->vendorFinal->opsi_pembayaran,
+                    ])->values()->toArray();
 
                     $form->fill($formData);
                 })
@@ -153,8 +192,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                                 TextInput::make('kode_pengajuan')->disabled(),
                                 TextInput::make('status')->disabled(),
                                 TextInput::make('total_nilai')->label('Total Nilai')->disabled(),
-                                TextInput::make('nama_divisi')->label('Divisi')->disabled(),
-                                TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
                             ]),
                             Repeater::make('items')->relationship()->label('')->schema([
                                 Grid::make(3)->schema([
@@ -265,33 +302,20 @@ class PencairanDanaOperasional extends Page implements HasTable
                                 ->label('')
                                 ->schema([
                                     Grid::make(5)->schema([
-                                        TextInput::make('nama_barang')
-                                            ->label('Nama Barang')
-                                            ->disabled(),
-                                        TextInput::make('vendor_final.nama_vendor')
-                                            ->label('Nama Vendor')
-                                            ->disabled(),
-                                        // --- PERBAIKAN DI SINI ---
-                                        TextInput::make('vendor_final.harga')
+                                        TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
+                                        TextInput::make('nama_vendor')->label('Nama Vendor')->disabled(),
+                                        TextInput::make('harga')
                                             ->label('Harga Satuan')
-                                            ->prefix('Rp') // Gunakan prefix untuk 'Rp'
-                                            // Format angka dengan pemisah ribuan
-                                            ->formatStateUsing(fn(?string $state): string => number_format($state, 0, ',', '.'))
+                                            ->prefix('Rp')
+                                            ->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))
                                             ->disabled(),
-                                        TextInput::make('vendor_final.metode_pembayaran')
-                                            ->label('Metode Bayar')
-                                            ->disabled(),
-                                        TextInput::make('vendor_final.opsi_pembayaran')
-                                            ->label('Opsi Bayar')
-                                            ->disabled(),
+                                        TextInput::make('metode_pembayaran')->label('Metode Bayar')->disabled(),
+                                        TextInput::make('opsi_pembayaran')->label('Opsi Bayar')->disabled(),
                                     ]),
                                 ])
-                                ->disabled()
-                                ->disableItemCreation()
-                                ->disableItemDeletion()
-                                ->disableItemMovement(),
+                                ->disabled()->disableItemCreation()->disableItemDeletion()->disableItemMovement(),
                         ])
-                        ->collapsible()
+                        ->collapsible()->collapsed()
                         ->visible(fn($get) => !empty($get('items_with_final_vendor'))),
                 ]),
             Action::make('payment')

@@ -2,33 +2,35 @@
 
 namespace App\Filament\Pages;
 
+use Carbon\Carbon;
+use Filament\Forms;
+use Filament\Pages\Page;
 use App\Models\Pengajuan;
 use App\Models\RevisiHarga;
 use App\Models\SurveiHarga;
-use Filament\Forms;
+use Illuminate\Support\HtmlString;
+use Filament\Forms\Components\Grid;
+use Filament\Tables\Actions\Action;
+use Filament\Forms\Components\Radio;
+use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Textarea;
+use Filament\Tables\Actions\ViewAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Contracts\HasTable;
+use Illuminate\Support\Facades\Storage;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
+use Filament\Tables\Columns\BadgeColumn;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\Hidden;
-use Filament\Forms\Components\Placeholder;
-use Filament\Forms\Components\Radio;
-use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
-use Filament\Notifications\Notification;
-use Filament\Pages\Page;
-use Filament\Tables\Actions\Action;
-use Filament\Tables\Actions\ViewAction;
-use Filament\Tables\Columns\BadgeColumn;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Concerns\InteractsWithTable;
-use Filament\Tables\Contracts\HasTable;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\HtmlString;
+use Filament\Forms\Components\Placeholder;
+use Filament\Tables\Concerns\InteractsWithTable;
+use App\Filament\Components\RevisiTimelineSection;
 
 class SurveiHargaGA extends Page implements HasTable
 {
@@ -39,25 +41,16 @@ class SurveiHargaGA extends Page implements HasTable
     protected static ?string $navigationLabel = 'Survei Harga GA';
     protected static ?int $navigationSort = 6;
 
-    /**
-     * Mendapatkan judul halaman.
-     */
     public function getTitle(): string
     {
         return 'Daftar Pengajuan (Survei Harga GA)';
     }
 
-    /**
-     * Menentukan apakah pengguna dapat mengakses halaman ini.
-     */
     public static function canAccess(): bool
     {
         return Auth::user()->hasAnyRole(['General Affairs', 'Super Admin']);
     }
 
-    /**
-     * Mendapatkan kueri untuk data tabel.
-     */
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
@@ -87,21 +80,16 @@ class SurveiHargaGA extends Page implements HasTable
         return $query->latest();
     }
 
-    /**
-     * Menentukan kolom tabel.
-     */
     protected function getTableColumns(): array
     {
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
-            // --- KOLOM TOTAL NILAI DENGAN LOGIKA PERMANEN ---
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
                 ->state(function (Pengajuan $record): ?float {
                     $revisi = $record->items->flatMap->surveiHargas->where('is_final', true)->first()?->revisiHargas?->first();
-                    // Jika ada revisi, nilai revisi menjadi nilai permanen. Jika tidak, gunakan nilai awal.
                     return $revisi?->harga_revisi ?? $record->total_nilai;
                 })
                 ->money('IDR')
@@ -139,9 +127,6 @@ class SurveiHargaGA extends Page implements HasTable
         ];
     }
 
-    /**
-     * Mendapatkan skema formulir untuk input survei.
-     */
     protected function getSurveyFormSchema(Pengajuan $record): array
     {
         $itemsForSurvey = $record->items->map(fn($item) => [
@@ -247,9 +232,6 @@ class SurveiHargaGA extends Page implements HasTable
         ];
     }
 
-    /**
-     * Mendapatkan logika untuk aksi survei.
-     */
     protected function getSurveyActionLogic(): callable
     {
         return function (array $data, Pengajuan $record, string $successMessage) {
@@ -274,9 +256,6 @@ class SurveiHargaGA extends Page implements HasTable
         };
     }
 
-    /**
-     * Mendapatkan URL untuk file privat.
-     */
     protected function getPrivateFileUrl(string $path): ?string
     {
         if (!Storage::disk('private')->exists($path)) {
@@ -285,20 +264,13 @@ class SurveiHargaGA extends Page implements HasTable
         return route('private.file', ['path' => $path]);
     }
 
-    /**
-     * Menentukan aksi tabel.
-     */
     protected function getTableActions(): array
     {
-
-        // --- LOGIKA KALKULASI BARU & STABIL ---
-        // Mendefinisikan logika kalkulasi dalam satu closure agar bisa digunakan kembali
-        // dan menghindari duplikasi kode. Ini adalah pendekatan yang lebih stabil.
         $calculateRevisi = function (Forms\Get $get, Forms\Set $set) {
             $hargaLama = (float) ($get('harga_lama') ?? 0);
             $selisih = (float) ($get('selisih_harga') ?? 0);
             $kondisi = $get('kondisi_harga');
-            $hargaRevisi = $hargaLama; // Nilai default
+            $hargaRevisi = $hargaLama;
 
             if ($kondisi === 'Biaya Kurang') {
                 $hargaRevisi = $hargaLama + $selisih;
@@ -306,7 +278,6 @@ class SurveiHargaGA extends Page implements HasTable
                 $hargaRevisi = max(0, $hargaLama - $selisih);
             }
 
-            // Mengatur nilai 'harga_revisi' secara eksplisit setiap kali ada perubahan.
             $set('harga_revisi', $hargaRevisi);
         };
 
@@ -330,8 +301,6 @@ class SurveiHargaGA extends Page implements HasTable
                             ->numeric()
                             ->prefix('Rp')
                             ->visible(fn($get) => !empty($get('pajak_lama'))),
-
-                        // --- PERUBAHAN PADA FIELD SUMBER ---
                         Radio::make('kondisi_harga')
                             ->label('Kondisi Harga')
                             ->options([
@@ -340,9 +309,7 @@ class SurveiHargaGA extends Page implements HasTable
                             ])
                             ->required()
                             ->live()
-                            // Setiap kali field ini berubah, jalankan kalkulasi
                             ->afterStateUpdated($calculateRevisi),
-
                         TextInput::make('selisih_harga')
                             ->label('Selisih Harga')
                             ->numeric()
@@ -350,21 +317,15 @@ class SurveiHargaGA extends Page implements HasTable
                             ->minValue(1)
                             ->prefix('Rp')
                             ->live()
-                            // Setiap kali field ini berubah, jalankan kalkulasi
                             ->afterStateUpdated($calculateRevisi)
                             ->helperText(fn($get) => $get('kondisi_harga') === 'Biaya Kurang' ? 'Masukkan jumlah kekurangan dana' : 'Masukkan jumlah kelebihan dana'),
-
-                        // --- PERUBAHAN PADA FIELD TARGET ---
                         TextInput::make('harga_revisi')
                             ->label('Harga Revisi')
                             ->numeric()
                             ->required()
                             ->prefix('Rp')
                             ->disabled()
-                            ->dehydrated(true)
-                        // Metode ->state(), ->reactive(), ->dehydrated(false) dihapus untuk stabilitas.
-                        // Field ini sekarang menjadi pasif dan nilainya diatur oleh field lain.
-                        // Secara default, field disabled akan tersimpan datanya.
+                            ->dehydrated(true),
                     ])->columns(2),
                     Section::make('Data Pajak')->schema([
                         Radio::make('opsi_pajak')
@@ -446,7 +407,6 @@ class SurveiHargaGA extends Page implements HasTable
                         'direvisi_oleh' => Auth::id(),
                     ]);
 
-                    // LOGIKA BARU UNTUK UPDATE STATUS
                     if ($data['kondisi_harga'] === 'Biaya Kurang') {
                         $record->update(['status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI]);
                     } elseif ($data['kondisi_harga'] === 'Biaya Lebih') {
@@ -484,7 +444,7 @@ class SurveiHargaGA extends Page implements HasTable
                         'id_pengajuan' => $record->id_pengajuan,
                         'harga_lama' => $defaultHargaLama,
                         'pajak_lama' => $defaultPajakLama,
-                        'harga_revisi' => $defaultHargaLama, // Mengisi nilai awal untuk harga_revisi
+                        'harga_revisi' => $defaultHargaLama,
                     ]);
                 })
                 ->visible(fn(Pengajuan $record): bool => $record->canRevisePrice())
@@ -551,29 +511,61 @@ class SurveiHargaGA extends Page implements HasTable
                 ->label('Detail')
                 ->modalHeading(fn(Pengajuan $record): string => "Detail Pengajuan {$record->kode_pengajuan}")
                 ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
-                    // Eager load semua relasi yang dibutuhkan
                     $record->load([
                         'items.surveiHargas.revisiHargas.direvisiOleh',
+                        'items.surveiHargas.revisiHargas.revisiBudgetApprover',
+                        'items.surveiHargas.revisiHargas.revisiBudgetValidator',
                         'items.vendorFinal',
-                        'pemohon.divisi'
+                        'pemohon.divisi',
+                        'approverBudget', // Tambahkan untuk budgeting
+                        'approverKadivGa', // Tambahkan untuk Kadiv GA
+                        'approverDirOps', // Tambahkan untuk Direktur Operasional
+                        'approverDirUtama' // Tambahkan untuk Direktur Utama
                     ]);
 
                     $formData = $record->toArray();
 
-                    // --- LOGIKA BARU: Flatten data revisi ---
+                    // Tambahkan logika untuk pengadaan_details dan perbaikan_details
+                    $getScenarioDetails = function ($items, $tipeSurvei) {
+                        $details = [];
+                        $totalCost = 0;
+                        foreach ($items as $item) {
+                            $cheapestSurvey = $item->surveiHargas->where('tipe_survei', $tipeSurvei)->sortBy('harga')->first();
+                            if (!$cheapestSurvey) continue;
+                            $itemCost = $cheapestSurvey->harga * $item->kuantitas;
+                            $taxInfo = 'Tidak ada pajak';
+                            $taxCost = 0;
+                            if ($cheapestSurvey->kondisi_pajak === 'Pajak ditanggung kita') {
+                                $taxCost = $cheapestSurvey->nominal_pajak;
+                                $taxInfo = ($cheapestSurvey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
+                            }
+                            $details[] = [
+                                'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
+                                'harga_vendor' => 'Rp ' . number_format($itemCost, 0, ',', '.'),
+                                'pajak_info' => $taxInfo,
+                            ];
+                            $totalCost += ($itemCost + $taxCost);
+                        }
+                        return empty($details) ? null : ['details' => $details, 'total' => 'Rp ' . number_format($totalCost, 0, ',', '.')];
+                    };
+                    $formData['pengadaan_details'] = $getScenarioDetails($record->items, 'Pengadaan');
+                    $formData['perbaikan_details'] = $getScenarioDetails($record->items, 'Perbaikan');
+
                     $finalSurvey = $record->items->flatMap->surveiHargas->where('is_final', true)->first();
                     $revisi = $finalSurvey ? $finalSurvey->revisiHargas->first() : null;
 
-                    // Hanya isi data revisi jika objek $revisi ada
                     if ($revisi) {
                         $formData['revisi_harga_final'] = $revisi->harga_revisi;
                         $formData['revisi_pajak_final'] = $revisi->nominal_pajak;
                         $formData['revisi_oleh_user'] = $revisi->direvisiOleh->nama_user ?? 'Tidak Diketahui';
                         $formData['revisi_alasan_final'] = $revisi->alasan_revisi;
                         $formData['revisi_tanggal_final'] = $revisi->tanggal_revisi;
+                        $formData['revisi_budget_status_pengadaan'] = $revisi->revisi_budget_status_pengadaan;
+                        $formData['revisi_budget_catatan_pengadaan'] = $revisi->revisi_budget_catatan_pengadaan;
+                        $formData['revisi_budget_approver_name'] = $revisi->revisiBudgetApprover->nama_user ?? 'Tidak Diketahui';
+                        $formData['revisi_budget_validated_by'] = $revisi->revisiBudgetValidator ? $revisi->revisiBudgetValidator->nama_user : null;
+                        $formData['revisi_budget_validated_at'] = $revisi->revisi_budget_validated_at ? Carbon::parse($revisi->revisi_budget_validated_at)->format('Y-m-d') : null;
                     }
-                    // Jika tidak ada revisi, field-field di atas tidak akan pernah dibuat.
-                    // --- AKHIR LOGIKA BARU ---
 
                     $formData['items_with_final_vendor'] = $record->items
                         ->filter(fn($item) => $item->vendorFinal)
@@ -613,7 +605,6 @@ class SurveiHargaGA extends Page implements HasTable
                         Textarea::make('catatan_revisi')->label('Catatan Approval Sebelumnya')->disabled(),
                     ])->collapsible()->collapsed(),
 
-                    // HASIL SURVEI HARGA GA
                     Section::make('Hasil Survei Harga')->schema([
                         Repeater::make('items')
                             ->relationship()
@@ -638,13 +629,47 @@ class SurveiHargaGA extends Page implements HasTable
                             ])->columnSpanFull()->disabled(),
                     ])->collapsed(),
 
-                    // BUDGET REVIEW
+                    // Tambahkan Section Rincian Estimasi Biaya
+                    Section::make('Rincian Estimasi Biaya - Skenario PENGADAAN')
+                        ->schema([
+                            Repeater::make('pengadaan_details.details')
+                                ->label('')
+                                ->schema([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('nama_barang')->label('Item')->disabled(),
+                                        TextInput::make('harga_vendor')->label('Harga dari Vendor')->disabled(),
+                                        TextInput::make('pajak_info')->label('Pajak Ditanggung Perusahaan')->disabled(),
+                                    ])
+                                ])->disabled()->disableItemCreation()->disableItemDeletion()->disableItemMovement(),
+                            Placeholder::make('pengadaan_details.total')
+                                ->label('TOTAL ESTIMASI BIAYA PENGADAAN')
+                                ->content(fn($get) => new HtmlString('<b class="text-xl text-primary-600">' . ($get('pengadaan_details.total') ?? 'Rp 0') . '</b>')),
+                        ])->collapsible()->collapsed()
+                        ->visible(fn($get) => !is_null($get('pengadaan_details')) && !empty($get('pengadaan_details')['details'])),
+
+                    Section::make('Rincian Estimasi Biaya - Skenario PERBAIKAN')
+                        ->schema([
+                            Repeater::make('perbaikan_details.details')
+                                ->label('')
+                                ->schema([
+                                    Grid::make(3)->schema([
+                                        TextInput::make('nama_barang')->label('Item')->disabled(),
+                                        TextInput::make('harga_vendor')->label('Harga dari Vendor')->disabled(),
+                                        TextInput::make('pajak_info')->label('Pajak Ditanggung Perusahaan')->disabled(),
+                                    ])
+                                ])->disabled()->disableItemCreation()->disableItemDeletion()->disableItemMovement(),
+                            Placeholder::make('perbaikan_details.total')
+                                ->label('TOTAL ESTIMASI BIAYA PERBAIKAN')
+                                ->content(fn($get) => new HtmlString('<b class="text-xl text-primary-600">' . ($get('perbaikan_details.total') ?? 'Rp 0') . '</b>')),
+                        ])
+                        ->visible(fn($get) => !is_null($get('perbaikan_details')) && !empty($get('perbaikan_details')['details']))
+                        ->collapsible()->collapsed(),
+
                     Section::make('Review Budgeting')
                         ->schema([
                             Grid::make(2)->schema([
                                 TextInput::make('budget_status_pengadaan')->label('Status Budget Pengadaan')->disabled(),
                                 Textarea::make('budget_catatan_pengadaan')->label('Catatan Budget Pengadaan')->disabled(),
-
                             ]),
                             Grid::make(2)->schema([
                                 TextInput::make('budget_status_perbaikan')->label('Status Budget Perbaikan')->disabled(),
@@ -662,9 +687,10 @@ class SurveiHargaGA extends Page implements HasTable
                             Pengajuan::STATUS_MENUNGGU_PELUNASAN,
                             Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
                             Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                            Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS, // Tambahkan status
+                            Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI, // Tambahkan status
                         ]))->collapsible()->collapsed(),
 
-                    // FINAL APPROVLE SECTION
                     Section::make('Final Approve')
                         ->schema([
                             Grid::make(2)->schema([
@@ -709,9 +735,11 @@ class SurveiHargaGA extends Page implements HasTable
                             Pengajuan::STATUS_SELESAI,
                             Pengajuan::STATUS_MENUNGGU_PELUNASAN,
                             Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
+                            Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS, // Tambahkan status
+                            Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI, // Tambahkan status
                         ]))
                         ->collapsible()->collapsed(),
-                    // --- SECTION VENDOR FINAL ---
+
                     Section::make('Vendor & Harga Final yang Disetujui')
                         ->schema([
                             Repeater::make('items_with_final_vendor')
@@ -734,36 +762,7 @@ class SurveiHargaGA extends Page implements HasTable
                         ->collapsible()->collapsed()
                         ->visible(fn($get) => !empty($get('items_with_final_vendor'))),
 
-                    // --- SECTION DETAIL REVISI DENGAN LOGIKA BARU ---
-                    Section::make('Detail Revisi Harga')
-                        ->schema([
-                            Grid::make(3)->schema([
-                                // Gunakan nama field yang sudah di-flatten
-                                TextInput::make('revisi_harga_final')
-                                    ->label('Harga Setelah Revisi')
-                                    ->prefix('Rp')
-                                    ->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))
-                                    ->disabled(),
-                                TextInput::make('revisi_pajak_final')
-                                    ->label('Nominal Pajak Revisi')
-                                    ->prefix('Rp')
-                                    ->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))
-                                    ->disabled()
-                                    ->visible(fn($get) => !is_null($get('revisi_pajak_final'))),
-                                TextInput::make('revisi_oleh_user')
-                                    ->label('Direvisi Oleh')
-                                    ->disabled(),
-                            ]),
-                            Textarea::make('revisi_alasan_final')->label('Alasan Revisi')->disabled(),
-                            TextInput::make('revisi_tanggal_final')->label('Tanggal Revisi')->disabled(),
-                        ])
-                        ->collapsible()->collapsed()
-                        ->visible(fn(Pengajuan $record) => in_array($record->status, [
-                            Pengajuan::STATUS_SUDAH_BAYAR,
-                            Pengajuan::STATUS_SELESAI,
-                            Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-                            Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
-                        ]))
+                    RevisiTimelineSection::make(),
                 ]),
         ];
     }
