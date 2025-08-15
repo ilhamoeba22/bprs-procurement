@@ -11,10 +11,14 @@ use Filament\Support\Colors\Color;
 use Filament\Navigation\NavigationGroup;
 use Filament\Http\Middleware\Authenticate;
 use Illuminate\Session\Middleware\StartSession;
+use App\Filament\Widgets\PengeluaranHarianChart;
 use App\Filament\Widgets\RiwayatPengajuanWidget;
 use Illuminate\Cookie\Middleware\EncryptCookies;
+use App\Filament\Widgets\CombinedDashboardCharts;
+use App\Filament\Widgets\PengajuanPerDivisiChart;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use App\Filament\Widgets\RekapPengeluaranPengajuanChart;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -31,7 +35,11 @@ class AdminPanelProvider extends PanelProvider
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([Pages\Dashboard::class])
-            ->widgets([RiwayatPengajuanWidget::class])
+            ->widgets([
+                PengajuanPerDivisiChart::class,
+                PengeluaranHarianChart::class,
+                RiwayatPengajuanWidget::class,
+            ])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

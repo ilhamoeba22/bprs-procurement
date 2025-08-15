@@ -2,150 +2,127 @@
 
 namespace App\Filament\Components;
 
-use App\Models\Pengajuan;
 use Carbon\Carbon;
+use App\Models\Pengajuan;
+use Illuminate\Support\HtmlString;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
-use Illuminate\Support\HtmlString;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Placeholder;
 
 class RevisiTimelineSection
 {
     public static function make(): Section
     {
-        return Section::make('Detail Revisi & Review Budget Ulang')
+        return Section::make('Detail Proses Revisi Harga')
             ->schema([
-                // Timeline: Revisi Harga oleh GA
+                // =================================================================
+                // SECTION 1: Revisi Harga oleh GA (DENGAN PENAMBAHAN FIELD)
+                // =================================================================
                 Section::make('Revisi Harga oleh GA')
                     ->schema([
                         Grid::make(3)->schema([
-                            TextInput::make('revisi_harga_final')
-                                ->label('Harga Setelah Revisi')
-                                ->prefix('Rp')
-                                ->formatStateUsing(fn($state) => $state ? number_format($state, 0, ',', '.') : '')
+                            TextInput::make('revisi_per_vendor.0.harga_awal')->label('Total Harga Awal')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->disabled(),
+                            TextInput::make('revisi_per_vendor.0.harga_revisi')->label('Harga Barang Revisi')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->disabled(),
+                            TextInput::make('revisi_per_vendor.0.selisih_harga')->label('Selisih Harga')->prefix('Rp')->formatStateUsing(fn($state) => number_format(abs($state), 0, ',', '.') . ($state >= 0 ? ' (Kenaikan)' : ' (Pengurangan)'))->disabled(),
+                            TextInput::make('revisi_per_vendor.0.nominal_pajak')->label('Nominal Pajak')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->disabled(),
+
+                            // FIELD BARU: Nominal DP
+                            TextInput::make('revisi_per_vendor.0.nominal_dp')
+                                ->label('Nominal sudah DP')
+                                ->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))
                                 ->disabled(),
-                            TextInput::make('revisi_pajak_final')
-                                ->label('Nominal Pajak Revisi')
-                                ->prefix('Rp')
-                                ->formatStateUsing(fn($state) => $state ? number_format($state, 0, ',', '.') : '')
-                                ->disabled()
-                                ->visible(fn($get) => !is_null($get('revisi_pajak_final'))),
-                            TextInput::make('revisi_oleh_user')
-                                ->label('Direvisi Oleh')
-                                ->disabled(),
+                            TextInput::make('revisi_per_vendor.0.revisi_tanggal')->label('Tanggal Revisi')->formatStateUsing(fn($state) => Carbon::parse($state)->translatedFormat('d F Y H:i'))->disabled(),
                         ]),
                         Grid::make(2)->schema([
-                            Textarea::make('revisi_alasan_final')
+                            Textarea::make('revisi_per_vendor.0.alasan_revisi')
                                 ->label('Alasan Revisi')
                                 ->disabled(),
-                            TextInput::make('revisi_tanggal_final')
-                                ->label('Tanggal Revisi')
-                                ->disabled()
-                                ->formatStateUsing(fn($state) => $state ? Carbon::parse($state)->format('d F Y') : ''),
-                        ]),
-                    ])
-                    ->collapsible()
-                    ->collapsed()
-                    ->visible(fn($get, $record) => $record instanceof Pengajuan && !is_null($get('revisi_harga_final')) && in_array($record->status, [
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS,
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-                        Pengajuan::STATUS_SUDAH_BAYAR,
-                        Pengajuan::STATUS_SELESAI,
-                        Pengajuan::STATUS_DITOLAK_KADIV_GA,
-                    ])),
 
-                // Timeline: Review Budget Revisi
-                Section::make('Review Budget Revisi')
-                    ->schema([
-                        Grid::make(3)->schema([
-                            TextInput::make('revisi_budget_status_pengadaan')
-                                ->label('Status Budget Revisi')
-                                ->disabled(),
-                            Textarea::make('revisi_budget_catatan_pengadaan')
-                                ->label('Catatan Budget Revisi')
-                                ->disabled(),
-                            TextInput::make('revisi_budget_approver_name')
-                                ->label('Budget Revisi Direview Oleh')
-                                ->disabled(),
-                        ]),
-                    ])
-                    ->collapsible()
-                    ->collapsed()
-                    ->visible(fn($get, $record) => $record instanceof Pengajuan && !is_null($get('revisi_budget_status_pengadaan')) && in_array($record->status, [
-                        Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS,
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-                        Pengajuan::STATUS_SUDAH_BAYAR,
-                        Pengajuan::STATUS_SELESAI,
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI,
-                    ])),
-
-                // Bagian: Validasi Budget Revisi oleh Kadiv Ops
-                Section::make('Validasi Budget Revisi oleh Kadiv Ops')
-                    ->schema([
-                        Grid::make(2)->schema([
-                            TextInput::make('revisi_budget_validated_by')
-                                ->label('Divalidasi Oleh')
-                                ->disabled()
-                                ->default('Tidak Diketahui'),
-                            TextInput::make('revisi_budget_validated_at')
-                                ->label('Tanggal Validasi')
-                                ->disabled()
-                                ->formatStateUsing(fn($state) => $state ? Carbon::parse($state)->format('d F Y') : 'Belum Divalidasi'),
+                            Placeholder::make('revisi_per_vendor.0.total_setelah_revisi')
+                                ->label('TOTAL ESTIMASI BIAYA SETELAH REVISI')
+                                ->content(fn($get) => new HtmlString(
+                                    '<b class="text-xl text-primary-600">Rp ' . number_format($get('revisi_per_vendor.0.total_setelah_revisi'), 0, ',', '.') . '</b>'
+                                )),
                         ])
+
                     ])
                     ->collapsible()
-                    ->collapsed()
-                    ->visible(fn($get, $record) => $record instanceof Pengajuan && !is_null($get('revisi_budget_validated_by')) && !is_null($get('revisi_budget_validated_at')) && in_array($record->status, [
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI,
-                        Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-                        Pengajuan::STATUS_SUDAH_BAYAR,
-                        Pengajuan::STATUS_SELESAI,
-                        Pengajuan::STATUS_DITOLAK_KADIV_GA,
-                    ])),
+                    ->collapsed(),
 
-                // Bagian: Hasil Keputusan Kadiv GA atas Revisi
-                Section::make('Hasil Keputusan Kadiv GA atas Revisi')
+                // =================================================================
+                // SECTION 2: Review & Validasi Budget (Revisi)
+                // =================================================================
+                Section::make('Review & Validasi Budget (Revisi)')
                     ->schema([
                         Grid::make(3)->schema([
-                            TextInput::make('revisi_kadiv_ga_decision')
-                                ->label('Keputusan Final Revisi')
-                                ->disabled(),
-                            Textarea::make('revisi_kadiv_ga_catatan')
-                                ->label('Catatan Keputusan Revisi')
-                                ->disabled(),
-                            TextInput::make('revisi_kadiv_ga_approver_name')
-                                ->label('Keputusan Dibuat Oleh')
-                                ->disabled(),
+                            TextInput::make('revisi_budget_status_pengadaan')->label('Status Budget Revisi')->disabled(),
+                            Textarea::make('revisi_budget_catatan_pengadaan')->label('Catatan Budget Revisi')->disabled(),
+                            TextInput::make('revisi_budget_approver_name')->label('Direview Oleh')->disabled(),
                         ]),
+                        Grid::make(2)->schema([
+                            TextInput::make('revisi_budget_validated_by')->label('Divalidasi Oleh Kadiv Ops')->disabled(),
+                            TextInput::make('revisi_budget_validated_at')->label('Tanggal Validasi')->formatStateUsing(fn($state) => Carbon::parse($state)->translatedFormat('d F Y H:i'))->disabled(),
+                        ])->visible(fn($get) => !empty($get('revisi_budget_validated_by'))), // Hanya tampil jika sudah divalidasi
                     ])
                     ->collapsible()
                     ->collapsed()
-                    ->visible(fn($get) => !empty($get('revisi_kadiv_ga_decision'))),
+                    ->visible(fn($get) => !empty($get('revisi_budget_status_pengadaan'))),
+
+                // =================================================================
+                // SECTION 3: Persetujuan Final (Revisi)
+                // =================================================================
+                Section::make('Persetujuan Final (Revisi)')
+                    ->schema([
+                        // Grid untuk Keputusan Kadiv GA
+                        Grid::make(3)->schema([
+                            TextInput::make('revisi_kadiv_ga_decision_type')->label('Keputusan Kadiv GA')->disabled(),
+                            Textarea::make('revisi_kadiv_ga_catatan')->label('Catatan Revisi')->disabled(),
+                            TextInput::make('revisi_kadiv_ga_approver_name')->label('Diberikan Oleh')->disabled(),
+                        ]),
+
+                        // Grid untuk Keputusan Direktur Operasional
+                        Grid::make(3)->schema([
+                            TextInput::make('revisi_direktur_operasional_decision_type')->label('Keputusan Direktur Operasional')->disabled(),
+                            Textarea::make('revisi_direktur_operasional_catatan')->label('Catatan Revisi')->disabled(),
+                            TextInput::make('revisi_direktur_operasional_approver_name')->label('Diberikan Oleh')->disabled(),
+                        ])
+                            // Tampil HANYA JIKA Direktur Operasional sudah memberi keputusan revisi
+                            ->visible(function (Pengajuan $record): bool {
+                                $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
+                                return $latestRevisi && !empty($latestRevisi->revisi_direktur_operasional_decision_type);
+                            }),
+
+                        // Grid untuk Keputusan Direktur Utama
+                        Grid::make(3)->schema([
+                            TextInput::make('revisi_direktur_utama_decision_type')->label('Keputusan Direktur Utama')->disabled(),
+                            Textarea::make('revisi_direktur_utama_catatan')->label('Catatan Revisi')->disabled(),
+                            TextInput::make('revisi_direktur_utama_approver_name')->label('Diberikan Oleh')->disabled(),
+                        ])
+                            // Tampil HANYA JIKA Direktur Utama sudah memberi keputusan revisi
+                            ->visible(function (Pengajuan $record): bool {
+                                $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
+                                return $latestRevisi && !empty($latestRevisi->revisi_direktur_utama_decision_type);
+                            }),
+                    ])
+                    ->collapsible()
+                    ->collapsed()
+                    ->visible(function (Pengajuan $record): bool {
+                        // Cek langsung ke relasi: Apakah revisi terakhir sudah memiliki keputusan dari Kadiv GA?
+                        $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
+                        return $latestRevisi && !empty($latestRevisi->revisi_kadiv_ga_decision_type);
+                    }),
+
             ])
             ->collapsible()
             ->collapsed()
-            ->visible(fn(Pengajuan $record) => in_array($record->status, [
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
-                Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS,
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI,
-                Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA_REVISI,
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI,
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI,
-                Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-                Pengajuan::STATUS_SUDAH_BAYAR,
-                Pengajuan::STATUS_SELESAI,
-                Pengajuan::STATUS_DITOLAK_KADIV_GA,
-            ]));
+            ->visible(function (Pengajuan $record): bool {
+                // Cek langsung ke relasi: Apakah ada data revisi yang tersimpan untuk pengajuan ini?
+                return $record->items
+                    ->flatMap->surveiHargas
+                    ->flatMap->revisiHargas
+                    ->isNotEmpty();
+            });
     }
 }

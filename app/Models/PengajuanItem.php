@@ -56,13 +56,6 @@ class PengajuanItem extends Model
         return $this->surveiHargas()->where('tipe_survei', 'Perbaikan');
     }
 
-    /**
-     * Get the final vendor survey price.
-     */
-    public function vendorFinal(): HasOne
-    {
-        return $this->hasOne(SurveiHarga::class, 'id_item')->where('is_final', true);
-    }
 
     /**
      * Get all revisions for the item through survey prices.
@@ -71,12 +64,12 @@ class PengajuanItem extends Model
     public function semuaRevisiHarga(): HasManyThrough
     {
         return $this->hasManyThrough(
-            RevisiHarga::class, // Model tujuan akhir
-            SurveiHarga::class, // Model perantara
-            'id_item',          // Foreign key di tabel perantara (survei_hargas)
-            'survei_harga_id',  // Foreign key di tabel tujuan akhir (revisi_hargas)
-            'id_item',          // Local key di model ini (pengajuan_items)
-            'id'                // Local key di tabel perantara (survei_hargas)
+            RevisiHarga::class,
+            SurveiHarga::class,
+            'id_item',
+            'survei_harga_id',
+            'id_item',
+            'id'
         );
     }
 }

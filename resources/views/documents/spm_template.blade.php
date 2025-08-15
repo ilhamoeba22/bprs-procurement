@@ -38,7 +38,7 @@
         .content p {
             line-height: 1.4;
             margin: 12px 0 8px 0;
-            /* Tambahkan jarak atas 12px */
+            text-align: justify;
         }
 
         .details-table {
@@ -53,6 +53,7 @@
             border: 1px solid #999;
             padding: 5px 6px;
             text-align: left;
+            vertical-align: top;
         }
 
         .details-table th {
@@ -64,14 +65,8 @@
             width: 100%;
         }
 
-        .signature-block {
-            width: 45%;
-            display: inline-block;
-            text-align: center;
-        }
-
         .section-title {
-            margin: 12px 0 4px 0;
+            margin: 15px 0 4px 0;
             font-size: 13px;
         }
 
@@ -90,16 +85,21 @@
         <div class="header" style="position: relative;">
             <img src="{{ public_path('images/logo_mci.png') }}" alt="Logo Kiri" style="position: absolute; left: 0; top: 0; height: 50px;">
             <img src="{{ public_path('images/ib_logo.png') }}" alt="Logo Kanan" style="position: absolute; right: 0; top: 0; height: 50px;">
-            <h3>SURAT PERINTAH MEMBAYAR</h3>
+            {{-- Penanda (REVISI) akan muncul otomatis jika ini adalah pengajuan revisi --}}
+            <h3>SURAT PERINTAH MEMBAYAR @if($is_revisi)(REVISI)@endif</h3>
             <p>Nomor: {{ $kode_pengajuan }}/SPM/OPS/{{ date('m/Y') }}</p>
         </div>
 
         <div class="content">
             <p>
-                Yang bertanda tangan di bawah ini, dengan ini memberikan perintah kepada Divisi Operasional untuk melakukan pembayaran atas pengajuan dengan Nomor: {{ $kode_pengajuan }}/SPM/OPS/{{ date('m/Y') }}, dengan rincian sebagai berikut:
+                Yang bertanda tangan di bawah ini, dengan ini memberikan perintah kepada Divisi Operasional untuk melakukan pembayaran atas pengajuan dengan Nomor: {{ $kode_pengajuan }}, dengan rincian sebagai berikut:
             </p>
         </div>
+
         <div class="signature-section">
+            {{-- ================================================================= --}}
+            {{-- SECTION 1: DETAIL PENGAJUAN --}}
+            {{-- ================================================================= --}}
             <h4 class="section-title">1. Detail Pengajuan</h4>
             <table class="details-table">
                 <tr>
@@ -107,71 +107,106 @@
                     <td>{{ $kode_pengajuan }}</td>
                 </tr>
                 <tr>
-                    <th>Tanggal Pengajuan</th>
-                    <td>{{ $tanggal_pengajuan }}</td>
-                </tr>
-                <tr>
                     <th>Pemohon</th>
                     <td>{{ $pemohon }} (Divisi {{ $divisi }})</td>
                 </tr>
             </table>
 
-            <h4 class="section-title">2. Rincian Barang & Vendor</h4>
+            {{-- ================================================================= --}}
+            {{-- SECTION 2: DETAIL HARGA AWAL --}}
+            {{-- ================================================================= --}}
+            <h4 class="section-title">@if($is_revisi) 2. Detail Harga Awal (Sebelum Revisi) @else 2. Detail Harga @endif</h4>
             <table class="details-table">
                 <thead>
                     <tr>
-                        <th>Barang / Vendor</th>
-                        <th style="width:8%; text-align:center;">Kuantitas</th>
+                        <th>Barang</th>
+                        <th style="width:8%; text-align:center;">Qty</th>
                         <th style="width:17%;">Harga Satuan</th>
                         <th style="width:20%;">Subtotal</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($items as $item)
+                    @foreach($items_original as $item)
                     <tr>
-                        <td>
-                            <b>{{ $item['barang'] }}</b><br>
-                            <span style="font-size:10px; color: #555;">Vendor: {{ $item['vendor'] }}</span>
-                        </td>
+                        <td><b>{{ $item['barang'] }}</b></td>
                         <td style="text-align: center;">{{ $item['kuantitas'] }}</td>
                         <td>Rp {{ number_format($item['harga'], 0, ',', '.') }}</td>
                         <td>Rp {{ number_format($item['subtotal'], 0, ',', '.') }}</td>
                     </tr>
                     @endforeach
                     <tr class="total-row">
-                        <td colspan="3" style="text-align:right;">TOTAL PERINTAH BAYAR</td>
-                        <td>Rp {{ number_format($total, 0, ',', '.') }}</td>
+                        <td colspan="3" style="text-align:right;">TOTAL NILAI BARANG (AWAL)</td>
+                        <td><b>Rp {{ number_format($total_nilai_barang_original, 0, ',', '.') }}</b></td>
+                    </tr>
+                    @if($total_pajak_original > 0)
+                    <tr class="total-row">
+                        <td colspan="3" style="text-align:right;">PAJAK (AWAL)</td>
+                        <td><b>Rp {{ number_format($total_pajak_original, 0, ',', '.') }}</b></td>
+                    </tr>
+                    @endif
+                    <tr class="total-row" style="background-color:#e0e0e0;">
+                        <td colspan="3" style="text-align:right;"><b>TOTAL BIAYA (AWAL)</b></td>
+                        <td><b>Rp {{ number_format($total_biaya_original, 0, ',', '.') }}</b></td>
                     </tr>
                 </tbody>
             </table>
 
-            <h4 class="section-title">3. Rincian Pembayaran</h4>
+            {{-- ================================================================= --}}
+            {{-- SECTION 3: DETAIL REVISI (HANYA MUNCUL JIKA ADA REVISI) --}}
+            {{-- ================================================================= --}}
+            @if($is_revisi && $revision_details)
+            <h4 class="section-title" style="color: #c2410c;">3. Detail Revisi Harga</h4>
+            <table class="details-table" style="background-color: #fffbeb;">
+                <tr>
+                    <td colspan="2" style="text-align:center; background-color:#fde047;"><b>Ringkasan Perubahan (Tanggal: {{ $revision_details['tanggal_revisi'] }})</b></td>
+                </tr>
+                <tr>
+                    <td style="width: 30%;">Total Biaya Lama (Barang + Pajak)</td>
+                    <td><b>Rp {{ number_format($total_biaya_original, 0, ',', '.') }}</b></td>
+                </tr>
+                <tr>
+                    <td>Selisih Total Biaya</td>
+                    <td>
+                        <b style="color: {{ $revision_details['selisih_total'] >= 0 ? '#166534' : '#991b1b' }};">
+                            Rp {{ number_format(abs($revision_details['selisih_total']), 0, ',', '.') }}
+                        </b>
+                        ({{ $revision_details['selisih_total'] >= 0 ? 'Kenaikan' : 'Pengurangan' }})
+                    </td>
+                </tr>
+                <tr>
+                    <td>Alasan Revisi</td>
+                    <td>{{ $revision_details['alasan_revisi'] }}</td>
+                </tr>
+                <tr>
+                    <td style="width: 30%;">Total Biaya Revisi (Barang + Pajak)</td>
+                    <td><b>Rp {{ number_format($total_final, 0, ',', '.') }}</b></td>
+                </tr>
+            </table>
+            @endif
+
+            {{-- ================================================================= --}}
+            {{-- SECTION 4: RINCIAN PEMBAYARAN FINAL --}}
+            {{-- ================================================================= --}}
+            <h4 class="section-title">@if($is_revisi) 4. @else 3. @endif Rincian Pembayaran Final kepada: {{ $payment_details['vendor'] }}</h4>
             <table class="details-table payment-details-table">
-                @foreach($items as $item)
-                <tr>
-                    <td colspan="2" style="background-color:#f2f2f2;"><b>Pembayaran untuk: {{ $item['barang'] }}</b></td>
+                <tr style="background-color:#e0e0e0;">
+                    <td><b>TOTAL PERINTAH BAYAR (FINAL)</b></td>
+                    <td><b>Rp {{ number_format($total_final, 0, ',', '.') }}</b></td>
                 </tr>
                 <tr>
-                    <td>Metode / Opsi Pembayaran</td>
-                    <td>{{ $item['metode_pembayaran'] }} / {{ $item['opsi_pembayaran'] }}</td>
+                    <td style="width: 30%;">Rekening Tujuan</td>
+                    <td><b>{{ $payment_details['nama_bank'] }}</b> - {{ $payment_details['no_rekening'] }} (a.n. {{ $payment_details['nama_rekening'] }})</td>
                 </tr>
-                @if($item['metode_pembayaran'] == 'Transfer')
+                @if($payment_details['opsi_pembayaran'] == 'Bisa DP')
                 <tr>
-                    <td>Rekening Tujuan</td>
-                    <td><b>{{ $item['rekening_details']['nama_bank'] }}</b> - {{ $item['rekening_details']['no_rekening'] }} (a.n. {{ $item['rekening_details']['nama_rekening'] }})</td>
-                </tr>
-                @endif
-                @if($item['opsi_pembayaran'] == 'Bisa DP')
-                <tr>
-                    <td>Pembayaran DP</td>
-                    <td><b>Rp {{ number_format($item['dp_details']['nominal_dp'], 0, ',', '.') }}</b> (Tanggal Bayar: {{ $item['dp_details']['tanggal_dp'] }})</td>
+                    <td>Pembayaran DP (Sudah Dibayar)</td>
+                    <td><b>Rp {{ number_format($payment_details['nominal_dp'], 0, ',', '.') }}</b> (Tgl. {{ $payment_details['tanggal_dp'] }})</td>
                 </tr>
                 <tr>
-                    <td>Pembayaran Lunas</td>
-                    <td><b>Rp {{ number_format($item['subtotal'] - $item['dp_details']['nominal_dp'], 0, ',', '.') }}</b> (Tanggal Bayar: {{ $item['tanggal_pelunasan'] }})</td>
+                    <td>Sisa Pelunasan (Termasuk Pajak)</td>
+                    <td><b>Rp {{ number_format($total_final - $payment_details['nominal_dp'], 0, ',', '.') }}</b></td>
                 </tr>
                 @endif
-                @endforeach
             </table>
         </div>
 
@@ -190,7 +225,6 @@
                 </tr>
                 <tr>
                     <td style="width:50%; text-align:center;">
-                        {{-- Blok QR Code Direktur --}}
                         @if($direkturName)
                         <p style="margin-bottom:2px;">Mengetahui,</p>
                         <p style="margin-bottom:2px;">{{ $direkturJabatan }}</p>
@@ -204,7 +238,6 @@
                         @endif
                     </td>
                     <td style="width:50%; text-align:center;">
-                        {{-- Blok QR Code Kadiv GA --}}
                         <p style="margin-bottom:2px;">Menyetujui,</p>
                         <p style="margin-bottom:2px;">Kepala Divisi GA</p>
                         <br>
@@ -216,7 +249,6 @@
                         <p style="margin-top:5px;"><b><u>{{ $kadivGaName }}</u></b></p>
                     </td>
                 </tr>
-
             </table>
         </div>
     </div>

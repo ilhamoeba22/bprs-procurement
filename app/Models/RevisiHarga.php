@@ -14,6 +14,7 @@ class RevisiHarga extends Model
 
     protected $fillable = [
         'survei_harga_id',
+        'harga_awal',
         'harga_revisi',
         'opsi_pajak',
         'kondisi_pajak',

@@ -16,10 +16,11 @@ class DatabaseSeeder extends Seeder
             DivisiSeeder::class,
             JabatanSeeder::class,
             UserSeeder::class,
-            PengecatanKantorSeeder::class,
-            PengadaanSewaSeeder::class,
-            PengadaanITSeeder::class,
-            SkenarioNilaiSeeder::class,
+            PengajuanSeeder::class,
+            // PengecatanKantorSeeder::class,
+            // PengadaanSewaSeeder::class,
+            // PengadaanITSeeder::class,
+            // SkenarioNilaiSeeder::class,
         ]);
     }
 }
