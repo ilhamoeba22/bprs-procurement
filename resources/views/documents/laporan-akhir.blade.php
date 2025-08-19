@@ -3,380 +3,435 @@
 
 <head>
     <meta charset="utf-8">
-    <title>Laporan Pengadaan Barang, Jasa, dan Sewa</title>
+    <title>Laporan Akhir Pengadaan - {{ $pengajuan->kode_pengajuan }}</title>
     <style>
         @page {
             margin: 25px 35px;
         }
 
         body {
-            font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            font-family: 'Helvetica', 'Arial', sans-serif;
             font-size: 10px;
-            color: #333333;
-            line-height: 1.4;
+            color: #333;
         }
 
         .header {
             text-align: center;
             margin-bottom: 15px;
-            position: relative;
-            padding: 10px 0;
-            border-bottom: 2px solid #000000;
-            height: 80px;
-        }
-
-        .header img {
-            height: 60px;
-            position: absolute;
-            top: 10px;
-        }
-
-        .header img:first-child {
-            left: 20px;
-        }
-
-        .header img:last-child {
-            right: 20px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
         }
 
         .header h3 {
-            font-size: 18px;
+            font-size: 16px;
             margin: 0;
-            padding: 0;
-            font-weight: 700;
-            color: #1a1a1a;
-            text-transform: uppercase;
-            line-height: 70px;
+            font-weight: bold;
         }
 
         .section-title {
             font-size: 12px;
-            margin: 10px 0 10px;
-            padding: 5px 10px;
-            background-color: #f5f5f5;
-            border-left: 4px solid #007bff;
-            font-weight: 600;
-            text-transform: uppercase;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 20px 0 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 1.5px solid #3498db;
         }
 
-        .details-table,
-        .info-table {
+        .info-table,
+        .item-table {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 10px;
-            border: 1px solid #dddddd;
         }
 
-        .details-table th,
-        .details-table td,
         .info-table th,
-        .info-table td {
-            border: 1px solid #dddddd;
-            padding: 5px 8px;
+        .info-table td,
+        .item-table th,
+        .item-table td {
+            border: 1px solid #ddd;
+            padding: 6px;
             text-align: left;
             vertical-align: top;
         }
 
-        .details-table th,
         .info-table th {
-            background-color: #f5f5f5;
-            font-weight: 600;
-            color: #1a1a1a;
+            background-color: #f2f2f2;
+            width: 180px;
         }
 
-        .sub-table th,
-        .sub-table td {
-            padding: 4px 8px;
+        .item-table th {
+            background-color: #ecf0f1;
+            text-align: center;
+        }
+
+        /* === SIGNATURE STYLING (New & Improved) === */
+        .signature-container {
+            margin-top: 15px;
+            page-break-inside: avoid;
+            clear: both;
+        }
+
+        .signature-container::after {
+            content: "";
+            clear: both;
+            display: table;
         }
 
         .signature-box {
-            text-align: center;
-            width: 100%;
-            margin-top: 0;
-            padding-top: 10px;
+            width: 49%;
+            float: left;
         }
 
-        .signature-box.ga-signature {
-            border-top: none;
+        .signature-box-right {
+            float: right;
         }
 
-        .signature-box img {
-            height: 80px;
-            margin: 5px 0;
+        .signature-content {
+            display: block;
+            clear: both;
         }
 
-        .signature-box p {
+        .signature-qr {
+            float: left;
+            width: 60px;
+            height: 60px;
+        }
+
+        .signature-qr img {
+            width: 60px;
+            height: 60px;
+        }
+
+        .signature-details {
+            float: left;
+            margin-left: 10px;
+            padding-top: 2px;
+        }
+
+        .signature-details p {
             margin: 0;
-            padding: 2px 0;
-            font-size: 9px;
+            line-height: 1.4;
         }
 
-        .signature-name {
-            font-weight: 700;
-            text-decoration: underline;
-            margin-top: 5px;
+        .signature-details .title {
+            font-weight: bold;
             font-size: 10px;
+            color: #7f8c8d;
         }
 
-        .note {
-            font-size: 8px;
-            color: #666666;
-            font-style: italic;
-            margin-top: 5px;
+        .signature-details .name {
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        .signature-details .date {
+            font-size: 9px;
+            color: #95a5a6;
+        }
+
+        /* ========================================= */
+
+        .revisi-section {
+            background-color: #fff9e6;
+            border: 1.5px solid #ffc107;
+            padding: 10px;
+            margin: 20px 0;
+        }
+
+        .revisi-title {
+            color: #d35400;
+            border-bottom-color: #f39c12;
+        }
+
+        .total-row td {
+            font-weight: bold;
+            background-color: #f2f2f2;
         }
     </style>
 </head>
 
 <body>
-    <div class="header" style="position: relative;">
-        <img src="{{ public_path('images/logo_mci.png') }}" alt="Logo Kiri" style="position: absolute; left: 0; top: 0; height: 50px;">
-        <img src="{{ public_path('images/ib_logo.png') }}" alt="Logo Kanan" style="position: absolute; right: 0; top: 0; height: 50px;">
-        <h3>Laporan Pengadaan Barang, Jasa, dan Sewa</h3>
+    @php $sectionCounter = 1; @endphp
+
+    <div class="header">
+        <h3>LAPORAN AKHIR PENGADAAN</h3>
     </div>
 
-    <h4 class="section-title">Informasi Pemohon</h4>
+    {{-- ==================== 1. DETAIL PENGAJUAN & PERSETUJUAN AWAL ==================== --}}
+    <div class="section-title">{{ $sectionCounter++ }}. Detail Pengajuan</div>
     <table class="info-table">
-        <thead>
-            <tr>
-                <th>Kode Pengajuan</th>
-                <th>Nama</th>
-                <th>Kantor</th>
-            </tr>
-            <tr>
-                <td>{{ $pengajuan->kode_pengajuan }}</td>
-                <td>{{ $pengajuan->pemohon->nama_user ?? 'N/A' }}</td>
-                <td>{{ $pengajuan->pemohon->kantor->nama_kantor ?? 'N/A' }}</td>
-            </tr>
-
-        </thead>
-        <tbody>
-            <tr>
-                <th>NIK</th>
-                <th>Divisi</th>
-                <th>Jabatan</th>
-            </tr>
-            <tr>
-                <td>{{ $pengajuan->pemohon->nik ?? 'N/A' }}</td>
-                <td>{{ $pengajuan->pemohon->divisi->nama_divisi ?? 'N/A' }}</td>
-                <td>{{ (json_decode($pengajuan->pemohon->jabatan, true)['nama_jabatan'] ?? 'N/A') }}</td>
-            </tr>
-        </tbody>
+        <tr>
+            <th>Kode Pengajuan</th>
+            <td><b>{{ $pengajuan->kode_pengajuan }}</b></td>
+        </tr>
+        <tr>
+            <th>Tanggal Pengajuan</th>
+            <td>{{ $pengajuan->created_at->translatedFormat('d F Y') }}</td>
+        </tr>
+        <tr>
+            <th>Pemohon</th>
+            <td>{{ $pengajuan->pemohon->nama_user ?? 'N/A' }} ({{ $pengajuan->pemohon->divisi->nama_divisi ?? 'N/A' }})</td>
+        </tr>
     </table>
-
-    <h4 class="section-title">Detail Permohonan</h4>
-    <table class="details-table">
+    <table class="item-table">
         <thead>
             <tr>
-                <th>Kategori</th>
-                <th>Nama Barang</th>
-                <th>Spesifikasi</th>
-                <th style="width:5%; text-align:center;">Qty</th>
-                <th style="width:15%; text-align:right;">Harga Final</th>
-                <th style="width:15%; text-align:right;">Total</th>
+                <th>Nama Barang & Kategori</th>
+                <th style="width:5%;">Qty</th>
+                <th>Justifikasi Kebutuhan</th>
             </tr>
         </thead>
         <tbody>
             @foreach($pengajuan->items as $item)
             <tr>
-                <td>{{ $item->kategori_barang }}</td>
-                <td>{{ $item->nama_barang }}</td>
-                <td>{{ $item->spesifikasi }}</td>
+                <td><b>{{ $item->nama_barang }}</b><br><small>Kategori: {{ $item->kategori_barang }}</small></td>
                 <td style="text-align:center;">{{ $item->kuantitas }}</td>
-                <td style="text-align:right;">Rp {{ number_format($item->vendorFinal->harga ?? 0, 0, ',', '.') }}</td>
-                <td style="text-align:right;">Rp {{ number_format(($item->vendorFinal->harga ?? 0) * $item->kuantitas, 0, ',', '.') }}</td>
+                <td>{{ $item->justifikasi }}</td>
             </tr>
             @endforeach
-            <tr style="font-weight:600;">
-                <td colspan="5" style="text-align:right;">TOTAL</td>
-                <td style="text-align:right;">Rp {{ number_format($pengajuan->total_nilai, 0, ',', '.') }}</td>
-            </tr>
         </tbody>
     </table>
 
-    <table style="width:100%; margin-top:10px;">
+    <div class="signature-container">
+        <div class="signature-box">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['pemohon']))<img src="{{ $qrCodes['pemohon'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Diajukan oleh:</p>
+                    <p class="name">{{ $pengajuan->pemohon->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Pada: {{ $pengajuan->created_at->translatedFormat('d M Y H:i') }}</p>
+                </div>
+            </div>
+        </div>
+        @if($atasan)
+        <div class="signature-box signature-box-right">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['atasan']))<img src="{{ $qrCodes['atasan'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Disetujui oleh Atasan:</p>
+                    <p class="name">{{ $atasan->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Pada: {{ \Carbon\Carbon::parse($pengajuan->manager_approved_at ?? $pengajuan->kadiv_approved_at)->translatedFormat('d M Y H:i') }}</p>
+                </div>
+            </div>
+        </div>
+        @endif
+    </div>
+
+    {{-- ==================== 2. REKOMENDASI IT (JIKA ADA) ==================== --}}
+    @if($pengajuan->recommenderIt)
+    <div class="section-title">{{ $sectionCounter++ }}. Rekomendasi Teknis IT</div>
+    <table class="info-table">
         <tr>
-            <td style="width:50%; vertical-align:top; text-align:center;">
-                <div class="signature-box">
-                    <p>Pemohon</p>
-                    <img src="{{ $pemohonQrCode }}" alt="QR Code">
-                    <p class="signature-name">{{ $pengajuan->pemohon->nama_user }}</p>
-                    <p>{{ (json_decode($pengajuan->pemohon->jabatan, true)['nama_jabatan'] ?? 'N/A') }}</p>
-                </div>
-            </td>
-            @if($atasan)
-            <td style="width:50%; vertical-align:top; text-align:center;">
-                <div class="signature-box">
-                    <p>Disetujui Atasan</p>
-                    <img src="{{ $atasanQrCode }}" alt="QR Code">
-                    <p class="signature-name">{{ $atasan->nama_user }}</p>
-                    <p>{{ (json_decode($atasan->jabatan, true)['nama_jabatan'] ?? 'N/A') }}</p>
-                </div>
-            </td>
-            @endif
+            <th>Tipe Rekomendasi</th>
+            <td>{{ $pengajuan->rekomendasi_it_tipe }}</td>
+        </tr>
+        <tr>
+            <th>Catatan</th>
+            <td>{{ $pengajuan->rekomendasi_it_catatan }}</td>
         </tr>
     </table>
-
-    @if($pengajuan->recommenderIt)
-    <h4 class="section-title">Rekomendasi IT</h4>
-    <table class="info-table">
-        <thead>
-            <tr>
-                <th>Rekomendasi</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>{{ $pengajuan->rekomendasi_it_tipe }}</td>
-            </tr>
-        </tbody>
-    </table>
+    <div class="signature-container">
+        <div class="signature-box">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['it']))<img src="{{ $qrCodes['it'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Direkomendasikan oleh:</p>
+                    <p class="name">{{ $pengajuan->recommenderIt->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Pada: {{ \Carbon\Carbon::parse($pengajuan->it_recommended_at)->translatedFormat('d M Y H:i') }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
     @endif
 
-    <h4 class="section-title">Review General Affairs (GA)</h4>
-    <table style="width:100%;">
-        <tr>
-            <td style="width:65%; vertical-align:top; padding-right:10px;">
-                <table class="details-table sub-table">
-                    <thead>
-                        <tr>
-                            <th style="width:5%;">No</th>
-                            <th style="width:25%;">Skenario</th>
-                            <th style="width:35%;">Nama Vendor</th>
-                            <th style="width:35%; text-align:right;">Harga</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @php $no = 1; @endphp
-                        @foreach($pengajuan->items as $item)
-                        @foreach($item->surveiHargas->groupBy('tipe_survei') as $tipe => $surveiGroup)
-                        @foreach($surveiGroup as $survei)
-                        <tr>
-                            <td style="text-align:center;">{{ $no++ }}</td>
-                            <td>
-                                Skenario
-                                @if(is_numeric($tipe))
-                                {{ $tipe }}
-                                @else
-                                @if(strtolower($tipe) == '1' || strtolower($tipe) == 'skenario 1') 1
-                                @elseif(strtolower($tipe) == '2' || strtolower($tipe) == 'skenario 2') 2
-                                @elseif(strtolower($tipe) == '3' || strtolower($tipe) == 'skenario 3') 3
-                                @else
-                                {{ $tipe }}
-                                @endif
-                                @endif
-                            </td>
-                            <td>{{ $survei->nama_vendor }}</td>
-                            <td style="text-align:right;">Rp {{ number_format($survei->harga, 0, ',', '.') }} / Item</td>
-                        </tr>
-                        @endforeach
-                        @endforeach
-                        @endforeach
-                    </tbody>
-                </table>
-            </td>
-            <td style="width:35%; vertical-align:top; text-align:center; padding-top:0;">
-                <div class="signature-box ga-signature">
-                    <p>Petugas Review GA</p>
-                    <img src="{{ $surveyorGaQrCode }}" alt="QR Code">
-                    <p class="signature-name">{{ $pengajuan->surveyorGa->nama_user }}</p>
-                    <p>{{ (json_decode($pengajuan->surveyorGa->jabatan, true)['nama_jabatan'] ?? 'N/A') }}</p>
+    {{-- ==================== 3. SURVEI GENERAL AFFAIRS ==================== --}}
+    <div class="section-title">{{ $sectionCounter++ }}. Hasil Survei General Affairs</div>
+    <p>Vendor terpilih: <b>{{ $finalVendor->nama_vendor ?? 'N/A' }}</b></p>
+    <div class="signature-container">
+        <div class="signature-box">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['ga_surveyor']))<img src="{{ $qrCodes['ga_surveyor'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Disurvei oleh:</p>
+                    <p class="name">{{ $pengajuan->surveyorGa->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Pada: {{ \Carbon\Carbon::parse($pengajuan->ga_surveyed_at)->translatedFormat('d M Y H:i') }}</p>
                 </div>
-            </td>
-        </tr>
-    </table>
+            </div>
+        </div>
+    </div>
 
-    <h4 class="section-title">Review Budget Control</h4>
-    <table class="info-table">
-        <thead>
-            <tr>
-                <th>Status Budget</th>
-                <th>Catatan Budget</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>{{ $pengajuan->kadiv_ga_decision_type === 'Pengadaan' ? $pengajuan->budget_status_pengadaan : $pengajuan->budget_status_perbaikan }}</td>
-                <td>{{ $pengajuan->kadiv_ga_decision_type === 'Pengadaan' ? $pengajuan->budget_catatan_pengadaan : $pengajuan->budget_catatan_perbaikan }}</td>
-            </tr>
-        </tbody>
-    </table>
-    <table style="width:100%; margin-top:10px;">
-        <tr>
-            <td style="width:50%; vertical-align:top; text-align:center;">
-                <div class="signature-box">
-                    <p>Petugas Budget</p>
-                    <img src="{{ $approverBudgetQrCode }}" alt="QR Code">
-                    <p class="signature-name">{{ $pengajuan->approverBudget->nama_user }}</p>
-                    <p>{{ (json_decode($pengajuan->approverBudget->jabatan, true)['nama_jabatan'] ?? 'N/A') }}</p>
-                </div>
-            </td>
-            <td style="width:50%; vertical-align:top; text-align:center;">
-                <div class="signature-box">
-                    <p>Validasi Budget</p>
-                    <img src="{{ $validatorBudgetOpsQrCode }}" alt="QR Code">
-                    <p class="signature-name">{{ $pengajuan->validatorBudgetOps->nama_user }}</p>
-                    <p>{{ (json_decode($pengajuan->validatorBudgetOps->jabatan, true)['nama_jabatan'] ?? 'N/A') }}</p>
-                </div>
-            </td>
-        </tr>
-    </table>
 
-    <h4 class="section-title">Detail Pembayaran</h4>
-    <table class="details-table">
-        <thead>
+    {{-- ==================== KONDISIONAL: ALUR PERSETUJUAN ==================== --}}
+    @if($latestRevisi)
+    {{-- Tampilan jika ada REVISI --}}
+    <div class="revisi-section">
+        <div class="section-title revisi-title">{{ $sectionCounter++ }}. Proses Revisi & Persetujuan Final</div>
+        <table class="info-table">
             <tr>
-                <th>Pembayaran</th>
-                <th>Metode / Opsi</th>
-                <th>Rekening Tujuan</th>
-                <th>Pembayaran DP</th>
-                <th>Pembayaran Lunas</th>
+                <th>Alasan Revisi</th>
+                <td>{{ $latestRevisi->alasan_revisi }} (oleh {{ $latestRevisi->direvisiOleh->nama_user ?? 'N/A' }})</td>
             </tr>
-        </thead>
-        <tbody>
-            @foreach($pengajuan->items as $item)
-            @if($item->vendorFinal)
             <tr>
-                <td style="background-color:#eef; font-weight:600;">{{ $item->nama_barang }} ke {{ $item->vendorFinal->nama_vendor }}</td>
-                <td>{{ $item->vendorFinal->metode_pembayaran }} / {{ $item->vendorFinal->opsi_pembayaran }}</td>
-                <td>@if($item->vendorFinal->metode_pembayaran == 'Transfer')<b>{{ $item->vendorFinal->nama_bank }}</b> - {{ $item->vendorFinal->no_rekening }} (a.n. {{ $item->vendorFinal->nama_rekening }})@else-@endif</td>
-                <td>@if($item->vendorFinal->opsi_pembayaran == 'Bisa DP')<b>Rp {{ number_format($item->vendorFinal->nominal_dp, 0, ',', '.') }}</b> (Dibayar Tgl: {{ $item->vendorFinal->tanggal_dp ? \Carbon\Carbon::parse($item->vendorFinal->tanggal_dp)->translatedFormat('d M Y') : '-' }})@else-@endif</td>
-                <td>
-                    <b>Rp {{ number_format(
-                        ($item->vendorFinal->harga ?? 0) * $item->kuantitas - ($item->vendorFinal->opsi_pembayaran == 'Bisa DP' ? ($item->vendorFinal->nominal_dp ?? 0) : 0),
-                        0, ',', '.'
-                    ) }}</b>
-                    (Dibayar Tgl: {{ $item->vendorFinal->tanggal_pelunasan ? \Carbon\Carbon::parse($item->vendorFinal->tanggal_pelunasan)->translatedFormat('d M Y') : '-' }})
-                </td>
+                <th>Harga Awal</th>
+                <td>Rp {{ number_format($latestRevisi->harga_awal, 0, ',', '.') }}</td>
             </tr>
-            @endif
-            @endforeach
-        </tbody>
-    </table>
+            <tr class="total-row">
+                <th>Harga Final (Setelah Revisi + Pajak)</th>
+                <td>Rp {{ number_format($latestRevisi->harga_revisi + $latestRevisi->nominal_pajak, 0, ',', '.') }}</td>
+            </tr>
+        </table>
 
-    <table style="width:100%; margin-top:10px;">
-        <tr>
-            <td style="width:50%; vertical-align:top; text-align:center;">
-                <div class="signature-box">
-                    <p>Disetujui oleh</p>
-                    <img src="{{ $approverKadivGaQrCode }}" alt="QR Code">
-                    <p class="signature-name">{{ $pengajuan->approverKadivGa->nama_user }}</p>
-                    <p>Kepala Divisi GA</p>
-                    <p class="note">Catatan: {{ $pengajuan->kadiv_ga_catatan ?? '-'}}</p>
+        <div class="signature-container">
+            {{-- Budget (Revisi) --}}
+            <div class="signature-box">
+                <div class="signature-content">
+                    <div class="signature-qr">@if(isset($qrCodes['budget_approver']))<img src="{{ $qrCodes['budget_approver'] }}">@endif</div>
+                    <div class="signature-details">
+                        <p class="title">Budget Review (Revisi):</p>
+                        <p class="name">{{ $latestRevisi->revisiBudgetApprover->nama_user ?? 'N/A' }}</p>
+                        <p class="date">Status: {{ $latestRevisi->revisi_budget_status_pengadaan }}</p>
+                    </div>
                 </div>
-            </td>
+            </div>
+            {{-- Validator (Revisi) --}}
+            <div class="signature-box signature-box-right">
+                <div class="signature-content">
+                    <div class="signature-qr">@if(isset($qrCodes['budget_validator']))<img src="{{ $qrCodes['budget_validator'] }}">@endif</div>
+                    <div class="signature-details">
+                        <p class="title">Validasi Budget (Revisi):</p>
+                        <p class="name">{{ $latestRevisi->revisiBudgetValidator->nama_user ?? 'N/A' }}</p>
+                        <p class="date">Pada: {{ \Carbon\Carbon::parse($latestRevisi->revisi_budget_validated_at)->translatedFormat('d M Y H:i') }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="signature-container" style="margin-top:20px;">
+            {{-- Kadiv GA (Revisi) --}}
+            <div class="signature-box">
+                <div class="signature-content">
+                    <div class="signature-qr">@if(isset($qrCodes['kadiv_ga']))<img src="{{ $qrCodes['kadiv_ga'] }}">@endif</div>
+                    <div class="signature-details">
+                        <p class="title">Menyetujui (Revisi):</p>
+                        <p class="name">{{ $latestRevisi->revisiKadivGaApprover->nama_user ?? 'N/A' }}</p>
+                        <p class="date">Keputusan: {{ $latestRevisi->revisi_kadiv_ga_decision_type }}</p>
+                    </div>
+                </div>
+            </div>
+            {{-- Direksi (Revisi) --}}
             @if($direksi)
-            <td style="width:50%; vertical-align:top; text-align:center;">
-                <div class="signature-box">
-                    <p>Mengetahui</p>
-                    <img src="{{ $direksiQrCode }}" alt="QR Code">
-                    <p class="signature-name">{{ $direksi->nama_user }}</p>
-                    <p>{{ $direksi->jabatan ? (json_decode($direksi->jabatan, true)['nama_jabatan'] ?? 'N/A') : 'Direksi' }}</p>
+            <div class="signature-box signature-box-right">
+                <div class="signature-content">
+                    <div class="signature-qr">@if(isset($qrCodes['direksi']))<img src="{{ $qrCodes['direksi'] }}">@endif</div>
+                    <div class="signature-details">
+                        <p class="title">Mengetahui (Revisi):</p>
+                        <p class="name">{{ $direksi->nama_user ?? 'N/A' }}</p>
+                        <p class="date">Keputusan: {{ $latestRevisi->revisi_direktur_operasional_decision_type ?? $latestRevisi->revisi_direktur_utama_decision_type }}</p>
+                    </div>
                 </div>
-            </td>
+            </div>
             @endif
+        </div>
+    </div>
+    @else
+    {{-- Tampilan jika TANPA REVISI --}}
+    <div class="section-title">{{ $sectionCounter++ }}. Validasi Budget & Persetujuan Final</div>
+    <table class="info-table">
+        <tr>
+            <th>Status Budget</th>
+            <td>{{ $pengajuan->status_budget }}</td>
+        </tr>
+        <tr class="total-row">
+            <th>Total Biaya Final</th>
+            <td>Rp {{ number_format($pengajuan->total_nilai, 0, ',', '.') }}</td>
         </tr>
     </table>
 
+    <div class="signature-container">
+        {{-- Budget --}}
+        <div class="signature-box">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['budget_approver']))<img src="{{ $qrCodes['budget_approver'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Budget Direview oleh:</p>
+                    <p class="name">{{ $pengajuan->approverBudget->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Pada: {{ \Carbon\Carbon::parse($pengajuan->budget_approved_at)->translatedFormat('d M Y H:i') }}</p>
+                </div>
+            </div>
+        </div>
+        {{-- Validator --}}
+        <div class="signature-box signature-box-right">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['budget_validator']))<img src="{{ $qrCodes['budget_validator'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Budget Divalidasi oleh:</p>
+                    <p class="name">{{ $pengajuan->validatorBudgetOps->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Pada: {{ \Carbon\Carbon::parse($pengajuan->kadiv_ops_budget_approved_at)->translatedFormat('d M Y H:i') }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="signature-container" style="margin-top:20px;">
+        {{-- Kadiv GA --}}
+        <div class="signature-box">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['kadiv_ga']))<img src="{{ $qrCodes['kadiv_ga'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Menyetujui:</p>
+                    <p class="name">{{ $pengajuan->approverKadivGa->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Keputusan: {{ $pengajuan->kadiv_ga_decision_type }}</p>
+                </div>
+            </div>
+        </div>
+        {{-- Direksi --}}
+        @if($direksi)
+        <div class="signature-box signature-box-right">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['direksi']))<img src="{{ $qrCodes['direksi'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Mengetahui:</p>
+                    <p class="name">{{ $direksi->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Keputusan: {{ $pengajuan->direktur_operasional_decision_type ?? $pengajuan->direktur_utama_decision_type }}</p>
+                </div>
+            </div>
+        </div>
+        @endif
+    </div>
+    @endif
+
+    {{-- ==================== 4. PEMBAYARAN FINAL ==================== --}}
+    <div class="section-title">{{ $sectionCounter++ }}. Detail Pembayaran Final</div>
+    @php
+    $finalTotal = $latestRevisi ? ($latestRevisi->harga_revisi + $latestRevisi->nominal_pajak) : $pengajuan->total_nilai;
+    @endphp
+    <table class="info-table">
+        <tr class="total-row">
+            <th>Total Final Dibayarkan</th>
+            <td>Rp {{ number_format($finalTotal, 0, ',', '.') }}</td>
+        </tr>
+        <tr>
+            <th>Vendor Penerima</th>
+            <td>{{ $finalVendor->nama_vendor ?? 'N/A' }}</td>
+        </tr>
+        <tr>
+            <th>Rekening Tujuan</th>
+            <td>{{ $finalVendor->nama_bank ?? '' }} - {{ $finalVendor->no_rekening ?? '' }} (a.n {{ $finalVendor->nama_rekening ?? '' }})</td>
+        </tr>
+    </table>
+
+    @if($pengajuan->disbursedBy)
+    <div class="signature-container">
+        <div class="signature-box">
+            <div class="signature-content">
+                <div class="signature-qr">@if(isset($qrCodes['pembayar']))<img src="{{ $qrCodes['pembayar'] }}">@endif</div>
+                <div class="signature-details">
+                    <p class="title">Dibayarkan oleh Finance:</p>
+                    <p class="name">{{ $pengajuan->disbursedBy->nama_user ?? 'N/A' }}</p>
+                    <p class="date">Pada: {{ \Carbon\Carbon::parse($pengajuan->disbursed_at)->translatedFormat('d M Y H:i') }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
 </body>
 
 </html>

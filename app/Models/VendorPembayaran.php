@@ -30,6 +30,13 @@ class VendorPembayaran extends Model
         'is_final',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'bukti_penyelesaian' => 'array',
+        ];
+    }
+
     public function pengajuan(): BelongsTo
     {
         return $this->belongsTo(Pengajuan::class, 'id_pengajuan', 'id_pengajuan');

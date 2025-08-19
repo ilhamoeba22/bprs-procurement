@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\User;
+use Illuminate\Support\Str;
+use App\Models\PengajuanItem;
+use App\Models\VendorPembayaran;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Pengajuan extends Model
 {
@@ -128,6 +133,11 @@ class Pengajuan extends Model
         return $this->belongsTo(User::class, 'direktur_utama_approved_by', 'id_user');
     }
 
+    public function disbursedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'disbursed_by', 'id_user');
+    }
+
     public static function getStatusBadgeColor($status): string
     {
         Log::debug('Determining badge color for status: ' . $status);
@@ -220,5 +230,34 @@ class Pengajuan extends Model
         });
 
         return $allDpPaidOrNotRequired;
+    }
+
+    /**
+     * Menghasilkan nama direktori penyimpanan berdasarkan kode pengajuan.
+     * Mengganti karakter '/' dengan '_' agar menjadi nama folder yang valid.
+     *
+     * @return string
+     */
+    public function getStorageDirectory(): string
+    {
+        return str_replace('/', '_', $this->kode_pengajuan);
+    }
+
+    /**
+     * Menghasilkan nama file yang unik dan deskriptif untuk file yang diunggah.
+     * Format: {kode_pengajuan}_{processName}_{timestamp}.{extension}
+     *
+     * @param string $processName Nama proses (cth: "bukti_dp", "bukti_survei")
+     * @param UploadedFile $file Objek file yang diunggah
+     * @return string
+     */
+    public function generateUniqueFileName(string $processName, UploadedFile $file): string
+    {
+        $sanitizedKode = str_replace('/', '_', $this->kode_pengajuan);
+        $timestamp = now()->timestamp;
+        $randomStr = Str::random(5);
+        $extension = $file->getClientOriginalExtension();
+
+        return "{$sanitizedKode}_{$processName}_{timestamp}_{$randomStr}.{$extension}";
     }
 }

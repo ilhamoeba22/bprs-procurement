@@ -2,19 +2,23 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\Pengajuan;
-use Barryvdh\DomPDF\Facade\Pdf;
+use ZipArchive;
 use Carbon\Carbon;
 use Filament\Tables;
+use App\Models\Pengajuan;
 use Filament\Tables\Table;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Tables\Actions\Action;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\File;
 use Filament\Tables\Columns\TextColumn;
+use Illuminate\Support\Facades\Storage;
 use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Filters\SelectFilter;
-use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\URL;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Illuminate\Support\Facades\Notification;
+use Filament\Widgets\TableWidget as BaseWidget;
 
 class RiwayatPengajuanWidget extends BaseWidget
 {
@@ -65,15 +69,25 @@ class RiwayatPengajuanWidget extends BaseWidget
             ])
             ->actions([
                 Action::make('download_laporan_akhir')
-                    ->label('Download')
+                    ->label('Laporan')
                     ->icon('heroicon-o-document-arrow-down')
                     ->color('info')
                     ->action(function (Pengajuan $record) {
+                        // Eager load semua relasi yang dibutuhkan untuk laporan
                         $record->load([
                             'pemohon.divisi',
-                            'pemohon.kantor',
                             'pemohon.jabatan',
                             'items.surveiHargas',
+                            'items.surveiHargas.revisiHargas' => function ($query) {
+                                $query->with([
+                                    'direvisiOleh.jabatan',
+                                    'revisiBudgetApprover.jabatan',
+                                    'revisiBudgetValidator.jabatan',
+                                    'revisiKadivGaApprover.jabatan',
+                                    'revisiDirekturOperasionalApprover.jabatan',
+                                    'revisiDirekturUtamaApprover.jabatan'
+                                ])->latest();
+                            },
                             'vendorPembayaran',
                             'approverManager.jabatan',
                             'approverKadiv.jabatan',
@@ -82,41 +96,127 @@ class RiwayatPengajuanWidget extends BaseWidget
                             'approverBudget.jabatan',
                             'validatorBudgetOps.jabatan',
                             'approverKadivGa.jabatan',
-                            'approverDirOps',
-                            'approverDirUtama'
+                            'approverDirOps.jabatan',
+                            'approverDirUtama.jabatan',
+                            'disbursedBy.jabatan'
                         ]);
 
+                        // Fungsi helper untuk generate QR Code
                         $generateQrCode = function ($user) use ($record) {
                             if (!$user) return null;
-                            $url = URL::signedRoute('approval.verify', [
-                                'pengajuan' => $record,
-                                'user' => $user
-                            ]);
+                            $url = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $user]);
                             $qrCodeData = QrCode::format('png')->size(70)->margin(1)->generate($url);
                             return 'data:image/png;base64,' . base64_encode($qrCodeData);
                         };
 
+                        // Ambil data atasan dan direksi yang relevan
                         $atasan = $record->approverKadiv ?? $record->approverManager;
                         $direksi = $record->approverDirUtama ?? $record->approverDirOps;
 
+                        // Ambil data revisi terakhir jika ada
+                        $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->first();
+
+                        // Ambil data vendor final
+                        $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
+
+                        // Siapkan data untuk dikirim ke view
                         $data = [
                             'pengajuan' => $record,
-                            'pemohonQrCode' => $generateQrCode($record->pemohon),
                             'atasan' => $atasan,
-                            'atasanQrCode' => $generateQrCode($atasan),
-                            'surveyorGaQrCode' => $generateQrCode($record->surveyorGa),
-                            'approverBudgetQrCode' => $generateQrCode($record->approverBudget),
-                            'validatorBudgetOpsQrCode' => $generateQrCode($record->validatorBudgetOps),
-                            'approverKadivGaQrCode' => $generateQrCode($record->approverKadivGa),
                             'direksi' => $direksi,
-                            'direksiQrCode' => $generateQrCode($direksi),
+                            'latestRevisi' => $latestRevisi,
+                            'finalVendor' => $finalVendor,
+                            'qrCodes' => [ // Mengelompokkan QR Code agar lebih rapi
+                                'pemohon' => $generateQrCode($record->pemohon),
+                                'atasan' => $generateQrCode($atasan),
+                                'it' => $generateQrCode($record->recommenderIt),
+                                'ga_surveyor' => $generateQrCode($record->surveyorGa),
+                                'budget_approver' => $generateQrCode($record->approverBudget),
+                                'budget_validator' => $generateQrCode($record->validatorBudgetOps),
+                                'pembayar' => $generateQrCode($record->disbursedBy),
+                                'kadiv_ga' => $generateQrCode($record->approverKadivGa),
+                                'direksi' => $generateQrCode($direksi),
+                            ],
                         ];
 
-                        $pdf = Pdf::loadView('documents.laporan-akhir', $data)
-                            ->setPaper('a4', 'portrait');
-
+                        $pdf = Pdf::loadView('documents.laporan-akhir', $data)->setPaper('a4', 'portrait');
                         $fileName = 'Laporan_Akhir_' . str_replace('/', '_', $record->kode_pengajuan) . '.pdf';
                         return response()->streamDownload(fn() => print($pdf->output()), $fileName);
+                    }),
+                Action::make('download_lampiran')
+                    ->label('Lampiran')
+                    ->icon('heroicon-o-folder-arrow-down')
+                    ->color('gray')
+                    ->action(function (Pengajuan $record) {
+                        // 1. Eager load semua relasi yang mengandung path file
+                        $record->load(['items.surveiHargas.revisiHargas', 'vendorPembayaran']);
+
+                        $filePaths = [];
+
+                        // 2. Kumpulkan semua path file dari berbagai sumber
+                        // a. Bukti Survei dari setiap vendor
+                        $buktiSurvei = $record->items->flatMap->surveiHargas->pluck('bukti_path')->unique()->filter();
+                        foreach ($buktiSurvei as $path) {
+                            $filePaths[] = $path;
+                        }
+
+                        // b. Bukti Revisi
+                        $buktiRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->pluck('bukti_revisi')->unique()->filter();
+                        foreach ($buktiRevisi as $path) {
+                            $filePaths[] = $path;
+                        }
+
+                        // c. Bukti Pembayaran (DP, Pelunasan, Pajak)
+                        foreach ($record->vendorPembayaran as $pembayaran) {
+                            if ($pembayaran->bukti_dp) $filePaths[] = $pembayaran->bukti_dp;
+                            if ($pembayaran->bukti_pelunasan) $filePaths[] = $pembayaran->bukti_pelunasan;
+                            if ($pembayaran->bukti_pajak) $filePaths[] = $pembayaran->bukti_pajak;
+
+                            // d. Bukti Penyelesaian (handle format JSON)
+                            if ($pembayaran->bukti_penyelesaian) {
+                                $buktiPenyelesaian = is_string($pembayaran->bukti_penyelesaian) ? json_decode($pembayaran->bukti_penyelesaian, true) : $pembayaran->bukti_penyelesaian;
+                                if (is_array($buktiPenyelesaian)) {
+                                    foreach ($buktiPenyelesaian as $bukti) {
+                                        if (isset($bukti['file_path'])) {
+                                            $filePaths[] = $bukti['file_path'];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        $uniqueFilePaths = array_unique($filePaths);
+
+                        if (empty($uniqueFilePaths)) {
+                            Notification::make()->title('Tidak Ada Lampiran')->body('Tidak ada file lampiran yang ditemukan untuk pengajuan ini.')->warning()->send();
+                            return;
+                        }
+
+                        // 3. Buat file ZIP
+                        $zipFileName = 'Lampiran_' . str_replace('/', '_', $record->kode_pengajuan) . '.zip';
+                        $tempZipPath = storage_path('app/temp/' . $zipFileName);
+
+                        // Pastikan direktori temp ada
+                        File::ensureDirectoryExists(dirname($tempZipPath));
+
+                        $zip = new ZipArchive;
+                        if ($zip->open($tempZipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
+                            foreach ($uniqueFilePaths as $filePath) {
+                                // Pastikan file ada di storage sebelum menambahkannya ke ZIP
+                                if (Storage::disk('private')->exists($filePath)) {
+                                    $absolutePath = Storage::disk('private')->path($filePath);
+                                    $fileNameInZip = basename($filePath);
+                                    $zip->addFile($absolutePath, $fileNameInZip);
+                                }
+                            }
+                            $zip->close();
+                        } else {
+                            Notification::make()->title('Gagal Membuat ZIP')->body('Tidak dapat membuat file arsip.')->danger()->send();
+                            return;
+                        }
+
+                        // 4. Download file ZIP dan hapus setelahnya
+                        return response()->download($tempZipPath)->deleteFileAfterSend(true);
                     }),
             ])
             ->filters([

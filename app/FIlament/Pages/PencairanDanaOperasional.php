@@ -11,6 +11,7 @@ use App\Models\Pengajuan;
 use Filament\Tables\Table;
 use App\Models\SurveiHarga;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\HtmlString;
 use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
@@ -358,6 +359,11 @@ class PencairanDanaOperasional extends Page implements HasTable
                         }
                     }
 
+                    $isDpStage = $finalVendor->opsi_pembayaran === 'Bisa DP' && !$finalVendor->bukti_dp;
+                    $isPelunasanStage = ($finalVendor->opsi_pembayaran === 'Langsung Lunas' && !$finalVendor->bukti_pelunasan) ||
+                        ($finalVendor->opsi_pembayaran === 'Bisa DP' && $finalVendor->bukti_dp && !$finalVendor->bukti_pelunasan);
+                    $isPaid = (bool)$finalVendor->bukti_pelunasan;
+
                     $getScenarioDetails = function ($items) use ($record) {
                         $details = [];
                         $totalCost = 0;
@@ -481,9 +487,33 @@ class PencairanDanaOperasional extends Page implements HasTable
                         ]),
 
                         Section::make('Upload Bukti Pembayaran')->schema([
-                            FileUpload::make('bukti_dp')->label('Upload Bukti DP')->disk('private')->directory('bukti-pembayaran')->visibility('private')->required()->visible($isDpStage),
-                            FileUpload::make('bukti_pelunasan')->label('1. Upload Bukti Pelunasan')->disk('private')->directory('bukti-pembayaran')->visibility('private')->required()->visible($isPelunasanStage),
-                            FileUpload::make('bukti_pajak')->label('2. Upload Bukti Pajak')->disk('private')->directory('bukti-pajak')->visibility('private')->required()->visible($isPelunasanStage && $pajakDitanggungKita),
+                            FileUpload::make('bukti_dp')
+                                ->label('Upload Bukti DP')
+                                ->required()
+                                ->disk('private')
+                                ->directory(fn(Pengajuan $record) => $record->getStorageDirectory())
+                                ->getUploadedFileNameForStorageUsing(fn(UploadedFile $file) => $record->generateUniqueFileName("bukti_dp", $file))
+                                ->visible($isDpStage), // <-- Tampil HANYA jika di tahap DP
+
+                            FileUpload::make('bukti_pelunasan')
+                                ->label('Upload Bukti Pelunasan')
+                                ->required()
+                                ->disk('private')
+                                ->directory(fn(Pengajuan $record) => $record->getStorageDirectory())
+                                ->getUploadedFileNameForStorageUsing(fn(UploadedFile $file) => $record->generateUniqueFileName("bukti_pelunasan", $file))
+                                ->visible($isPelunasanStage), // <-- Tampil HANYA jika di tahap Pelunasan
+
+                            FileUpload::make('bukti_pajak')
+                                ->label('Upload Bukti Bayar Pajak (jika ada)')
+                                ->disk('private')
+                                ->directory(fn(Pengajuan $record) => $record->getStorageDirectory())
+                                ->getUploadedFileNameForStorageUsing(fn(UploadedFile $file) => $record->generateUniqueFileName("bukti_pajak", $file))
+                                ->visible($isPelunasanStage && $pajakDitanggungKita), // <-- Tampil BERSAMAAN dengan pelunasan HANYA jika ada pajak
+
+                            Placeholder::make('payment_complete_info')
+                                ->label('Status')
+                                ->content('Pembayaran untuk pengajuan ini telah Lunas.')
+                                ->visible($isPaid), // <-- Tampil jika sudah lunas semua
                         ]),
                     ];
                 })
@@ -653,6 +683,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                         'direkturJabatan' => $direkturJabatan,
                         'kadivGaQrCode' => $kadivGaQrCode,
                         'direkturQrCode' => $direkturQrCode,
+                        'is_paid' => !empty($finalVendor->bukti_pelunasan),
                     ];
 
                     $pdf = Pdf::loadView('documents.spm_template', $data);

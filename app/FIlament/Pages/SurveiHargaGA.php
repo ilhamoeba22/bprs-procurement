@@ -2,18 +2,17 @@
 
 namespace App\Filament\Pages;
 
-use Carbon\Carbon;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
 use App\Models\RevisiHarga;
 use App\Models\SurveiHarga;
+use Illuminate\Support\Str;
 use App\Models\VendorPembayaran;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\HtmlString;
-use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
-use Illuminate\Support\Facades\Log;
 use Filament\Forms\Components\Radio;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Hidden;
@@ -114,7 +113,7 @@ class SurveiHargaGA extends Page implements HasTable
                     if ($latestRevisi) {
                         $hargaAwalBarang = $latestRevisi->harga_awal;
                         $vendorName = $latestRevisi->surveiHarga?->nama_vendor;
-                        if (!$vendorName) return 'Nilai Awal: -'; // Fallback jika vendor tidak ditemukan
+                        if (!$vendorName) return 'Nilai Awal: -';
                         $totalPajakAwal = 0;
                         foreach ($record->items as $item) {
                             $survey = $item->surveiHargas
@@ -284,8 +283,11 @@ class SurveiHargaGA extends Page implements HasTable
                                     ->label('Bukti Penawaran Vendor')
                                     ->required()
                                     ->disk('private')
-                                    ->directory('bukti-survei')
-                                    ->visibility('private'),
+                                    ->directory(fn(Pengajuan $record) => $record->getStorageDirectory())
+                                    ->getUploadedFileNameForStorageUsing(function (UploadedFile $file, Forms\Get $get) use ($record): string {
+                                        $vendorName = Str::slug($get('../../nama_vendor'));
+                                        return $record->generateUniqueFileName("bukti_survei_{$vendorName}", $file);
+                                    }),
                             ])->columns(2),
                         ])->columnSpanFull(),
                 ]),
@@ -543,9 +545,6 @@ class SurveiHargaGA extends Page implements HasTable
                 ]),
 
 
-            // =================================================================
-            // TAMBAHKAN ACTION BARU DI BAWAH INI
-            // =================================================================
             Action::make('revisiHarga')
                 ->label('Revisi Harga')
                 ->icon('heroicon-o-pencil-square')
@@ -611,7 +610,10 @@ class SurveiHargaGA extends Page implements HasTable
                         ])->columns(2)->collapsible(),
 
                         Textarea::make('alasan_revisi')->label('Alasan Revisi')->required()->columnSpanFull(),
-                        FileUpload::make('bukti_revisi')->label('Bukti Revisi (Invoice Baru, dll)')->required()->disk('private')->directory('bukti-revisi')->visibility('private')->columnSpanFull(),
+                        FileUpload::make('bukti_revisi')
+                            ->disk('private')
+                            ->directory(fn(Pengajuan $record) => $record->getStorageDirectory())
+                            ->getUploadedFileNameForStorageUsing(fn(UploadedFile $file) => $record->generateUniqueFileName("bukti_revisi", $file))
                     ];
                 })
                 ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
@@ -777,11 +779,24 @@ class SurveiHargaGA extends Page implements HasTable
                 ->color('success')
                 ->icon('heroicon-o-check-badge')
                 ->modalHeading('Form Penyelesaian Pengadaan')
-                ->form([
-                    FileUpload::make('bukti_penyelesaian')
-                        ->label('Upload Bukti Penyelesaian (contoh: BAST, Foto Barang Diterima)')
-                        ->required()
-                        ->disk('private')->directory('bukti-penyelesaian')->visibility('private'),
+                ->modalWidth('2xl') // Modal bisa dibuat lebih lebar
+                ->form(fn(Pengajuan $record): array => [
+                    // Menggunakan Repeater untuk tampilan yang lebih baik
+                    Repeater::make('bukti_penyelesaian_list')
+                        ->label('Daftar Bukti Penyelesaian')
+                        ->addActionLabel('Tambah Bukti Penyelesaian') // Tombol yang Anda inginkan
+                        ->minItems(1)
+                        ->collapsible()
+                        ->cloneable()
+                        ->schema([
+                            FileUpload::make('file_path')
+                                ->label('Upload File Bukti')
+                                ->required()
+                                ->disk('private')
+                                ->directory(fn() => $record->getStorageDirectory())
+                                ->getUploadedFileNameForStorageUsing(fn(UploadedFile $file) => $record->generateUniqueFileName("bukti_penyelesaian", $file)),
+                        ])
+                        ->columnSpanFull(),
                 ])
                 ->action(function (array $data, Pengajuan $record): void {
                     // 1. Cari vendor final untuk menyimpan bukti
@@ -791,9 +806,10 @@ class SurveiHargaGA extends Page implements HasTable
                         return;
                     }
 
-                    // 2. Update record vendor_pembayaran dengan bukti penyelesaian
+                    // 2. Data yang disimpan sekarang berupa array (JSON) dari repeater
+                    // Pastikan kolom 'bukti_penyelesaian' di database Anda bisa menampung JSON (tipe TEXT atau JSON)
                     $finalVendor->update([
-                        'bukti_penyelesaian' => $data['bukti_penyelesaian'],
+                        'bukti_penyelesaian' => $data['bukti_penyelesaian_list'],
                     ]);
 
                     // 3. Tambahkan catatan ke riwayat dan ubah status menjadi SELESAI

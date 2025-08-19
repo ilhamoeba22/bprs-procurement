@@ -32,12 +32,12 @@
         }
 
         .content {
-            margin-top: 10px;
+            margin-top: 15px;
         }
 
         .content p {
             line-height: 1.4;
-            margin: 12px 0 8px 0;
+            margin: 12px 0 0 0;
             text-align: justify;
         }
 
@@ -61,7 +61,7 @@
         }
 
         .signature-section {
-            margin-top: 25px;
+            margin-top: 20px;
             width: 100%;
         }
 
@@ -77,10 +77,35 @@
         .footer p {
             margin: 0;
         }
+
+        /* ...DENGAN CSS BARU INI */
+        .section-header-container {
+            position: relative;
+            margin-bottom: 4px;
+        }
+
+        .paid-stamp-small {
+            position: absolute;
+            right: 20px;
+            top: 70px;
+            /* <-- Ubah menjadi nilai positif untuk mendorongnya ke bawah */
+            transform: rotate(-10deg);
+            font-size: 28px;
+            font-weight: bold;
+            color: #28a745;
+            border: 3px solid #28a745;
+            padding: 2px 10px;
+            border-radius: 5px;
+            text-align: center;
+            background-color: #fff;
+            opacity: 0.9;
+            /* Sedikit disesuaikan agar lebih menyatu */
+        }
     </style>
 </head>
 
 <body>
+
     <div class="container">
         <div class="header" style="position: relative;">
             <img src="{{ public_path('images/logo_mci.png') }}" alt="Logo Kiri" style="position: absolute; left: 0; top: 0; height: 50px;">
@@ -187,7 +212,15 @@
             {{-- ================================================================= --}}
             {{-- SECTION 4: RINCIAN PEMBAYARAN FINAL --}}
             {{-- ================================================================= --}}
-            <h4 class="section-title">@if($is_revisi) 4. @else 3. @endif Rincian Pembayaran Final kepada: {{ $payment_details['vendor'] }}</h4>
+            <div class="section-header-container">
+                <h4 class="section-title">@if($is_revisi) 4. @else 3. @endif Rincian Pembayaran Final kepada: {{ $payment_details['vendor'] }}</h4>
+
+                @if($is_paid)
+                <div class="paid-stamp-small">
+                    LUNAS
+                </div>
+                @endif
+            </div>
             <table class="details-table payment-details-table">
                 <tr style="background-color:#e0e0e0;">
                     <td><b>TOTAL PERINTAH BAYAR (FINAL)</b></td>
@@ -204,7 +237,14 @@
                 </tr>
                 <tr>
                     <td>Sisa Pelunasan (Termasuk Pajak)</td>
-                    <td><b>Rp {{ number_format($total_final - $payment_details['nominal_dp'], 0, ',', '.') }}</b></td>
+                    <td>
+                        <b>Rp {{ number_format($total_final - $payment_details['nominal_dp'], 0, ',', '.') }}</b>
+
+                        {{-- Tampilkan tanggal jika sudah lunas --}}
+                        @if($is_paid)
+                        (Tgl. {{ $payment_details['tanggal_pelunasan'] }})
+                        @endif
+                    </td>
                 </tr>
                 @endif
             </table>
