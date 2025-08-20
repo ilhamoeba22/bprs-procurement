@@ -30,6 +30,8 @@ class AdminPanelProvider extends PanelProvider
     {
         return $panel
             ->default()->id('admin')->path('admin')
+            ->brandLogo(asset('images/logo_mci.png'))
+            ->brandLogoHeight('55px')
             ->login(Login::class)
             ->colors(['primary' => Color::Amber])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')

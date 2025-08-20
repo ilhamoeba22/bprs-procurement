@@ -8,6 +8,11 @@ use Filament\Pages\Auth\Login as BaseLogin;
 
 class Login extends BaseLogin
 {
+    public function getHeading(): string
+    {
+        return 'E-Procurement'; // ganti "Sign in"
+    }
+
     protected function getEmailFormComponent(): Component
     {
         return TextInput::make('nik_user')
