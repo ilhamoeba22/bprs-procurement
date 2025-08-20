@@ -270,10 +270,17 @@ class PersetujuanManager extends Page implements HasTable
                 ->color('success')
                 ->icon('heroicon-o-check-circle')
                 ->requiresConfirmation()
+                ->modalHeading('Konfirmasi Persetujuan')
+                ->modalDescription('Apakah Anda yakin ingin menyetujui pengajuan ini?')
+                ->modalSubmitActionLabel('Ya, Setujui')
                 ->action(function (Pengajuan $record) {
+                    $catatan = $record->catatan_revisi ?? '';
+                    $catatan .= "\n\n[Disetujui oleh Manager: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
                     $record->update([
                         'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV,
+                        'catatan_revisi' => trim($catatan),
                         'manager_approved_by' => Auth::id(),
+                        'manager_approved_at' => now(),
                     ]);
                     Notification::make()->title('Pengajuan disetujui')->success()->send();
                 })
@@ -284,16 +291,22 @@ class PersetujuanManager extends Page implements HasTable
                 ->color('danger')
                 ->icon('heroicon-o-x-circle')
                 ->requiresConfirmation()
+                ->modalHeading('Konfirmasi Penolakan')
+                ->modalDescription('Apakah Anda yakin ingin menolak pengajuan ini?')
+                ->modalSubmitActionLabel('Ya, Tolak')
                 ->form([
                     Textarea::make('catatan_revisi')
                         ->label('Alasan Penolakan')
                         ->required(),
                 ])
                 ->action(function (array $data, Pengajuan $record) {
+                    $catatan = $record->catatan_revisi ?? '';
+                    $catatan .= "\n\n[Ditolak oleh Manager: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]\n" . $data['catatan_revisi'];
                     $record->update([
                         'status' => Pengajuan::STATUS_DITOLAK_MANAGER,
-                        'catatan_revisi' => "[Ditolak oleh Manager: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]\n" . $data['catatan_revisi'],
+                        'catatan_revisi' => trim($catatan),
                         'manager_approved_by' => Auth::id(),
+                        'manager_approved_at' => now(),
                     ]);
                     Notification::make()->title('Pengajuan ditolak')->danger()->send();
                 })

@@ -9,6 +9,8 @@ use App\Models\Pengajuan;
 use Filament\Tables\Actions\Action;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Textarea;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -263,18 +265,59 @@ class RekomendasiIT extends Page implements HasTable
                 ]),
 
 
-            Action::make('submit_recommendation')
-                ->label('Submit Rekomendasi')->color('primary')->icon('heroicon-o-chat-bubble-bottom-center-text')
-                ->form([
-                    Forms\Components\Select::make('rekomendasi_it_tipe')->label('Tipe Rekomendasi')->options(['Pembelian Baru' => 'Pembelian Baru', 'Perbaikan' => 'Perbaikan'])->required(),
-                    Forms\Components\Textarea::make('rekomendasi_it_catatan')->label('Catatan Rekomendasi')->required(),
-                ])
+            Action::make('submit_rekomendasi')
+                ->label('Submit Rekomendasi')
+                ->color('success')
+                ->icon('heroicon-o-check-circle')
+                ->requiresConfirmation()
+                ->modalWidth('3xl')
+                ->modalHeading('Konfirmasi Submit Rekomendasi')
+                ->modalDescription('Apakah Anda yakin ingin menyubmit rekomendasi ini?')
+                ->modalSubmitActionLabel('Ya, Submit')
+                ->form(function (Forms\Form $form, Pengajuan $record): array {
+                    // Fetch only IT items for display
+                    $itItems = $record->items->filter(function ($item) {
+                        return $item->kategori_barang === 'Barang IT';
+                    })->map(function ($item) {
+                        return [
+                            'nama_barang' => $item->nama_barang,
+                            'kuantitas' => $item->kuantitas,
+                            'spesifikasi' => $item->spesifikasi,
+                            'justifikasi' => $item->justifikasi,
+                        ];
+                    })->toArray();
+
+                    return [
+                        // New section to display IT items at the top of the modal
+                        Section::make('Barang IT yang Diajukan')
+                            ->description('Berikut adalah detail barang IT yang memerlukan rekomendasi.')
+                            ->schema([
+                                Repeater::make('it_items')
+                                    ->label('Daftar Barang IT')
+                                    ->schema([
+                                        Forms\Components\TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
+                                        Forms\Components\TextInput::make('kuantitas')->label('Kuantitas')->disabled(),
+                                        Forms\Components\Textarea::make('spesifikasi')->label('Spesifikasi')->disabled(),
+                                        Forms\Components\Textarea::make('justifikasi')->label('Justifikasi')->disabled(),
+                                    ])
+                                    ->default($itItems)
+                                    ->disabled()
+                                    ->collapsible()
+                                    ->columnSpanFull(),
+                            ]),
+
+                        // Existing form fields for recommendation
+                        Forms\Components\Select::make('rekomendasi_it_tipe')->label('Tipe Rekomendasi')->options(['Pembelian Baru' => 'Pembelian Baru', 'Perbaikan' => 'Perbaikan'])->required(),
+                        Forms\Components\Textarea::make('rekomendasi_it_catatan')->label('Catatan Rekomendasi')->required(),
+                    ];
+                })
                 ->action(function (array $data, Pengajuan $record) {
                     $record->update([
                         'rekomendasi_it_tipe' => $data['rekomendasi_it_tipe'],
                         'rekomendasi_it_catatan' => $data['rekomendasi_it_catatan'],
                         'status' => Pengajuan::STATUS_SURVEI_GA,
-                        'it_recommended_by' => Auth::id(), // Catat siapa yang memberi rekomendasi
+                        'it_recommended_by' => Auth::id(),
+                        'it_recommended_at' => now(),
                     ]);
                     Notification::make()->title('Rekomendasi berhasil disubmit')->success()->send();
                 })

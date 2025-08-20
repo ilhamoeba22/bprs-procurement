@@ -273,24 +273,27 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
                     RevisiTimelineSection::make(),
                 ]),
 
-
             Action::make('approve')
                 ->label('Setujui')
                 ->color('success')
                 ->icon('heroicon-o-check-circle')
+                ->requiresConfirmation()
+                ->modalHeading('Konfirmasi Persetujuan')
+                ->modalDescription('Apakah Anda yakin ingin menyetujui pengajuan ini?')
+                ->modalSubmitActionLabel('Ya, Setujui')
                 ->form([
                     FormsTextarea::make('catatan_approval')
                         ->label('Catatan Persetujuan (Opsional)'),
                 ])
                 ->action(function (array $data, Pengajuan $record) {
                     $catatan = $record->catatan_revisi ?? '';
+                    $catatan .= "\n\n[Disetujui oleh Kepala Divisi: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
                     if (!empty($data['catatan_approval'])) {
-                        $user = Auth::user()->nama_user;
-                        $catatan .= "\n\n[Disetujui oleh Kepala Divisi: {$user} pada " . now()->format('d-m-Y H:i') . "]\n" . $data['catatan_approval'];
+                        $catatan .= "\n" . $data['catatan_approval'];
                     }
 
                     $needsITRecommendation = $record->items()
-                        ->whereIn('kategori_barang', ['1a. Software', '2a. Komputer & Hardware Sistem Informasi'])
+                        ->where('kategori_barang', 'Barang IT')
                         ->exists();
                     $newStatus = $needsITRecommendation ? Pengajuan::STATUS_REKOMENDASI_IT : Pengajuan::STATUS_SURVEI_GA;
 
@@ -298,6 +301,7 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
                         'status' => $newStatus,
                         'catatan_revisi' => trim($catatan),
                         'kadiv_approved_by' => Auth::id(),
+                        'kadiv_approved_at' => now(),
                     ]);
                     Notification::make()->title('Pengajuan disetujui')->success()->send();
                 })
@@ -308,6 +312,9 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
                 ->color('danger')
                 ->icon('heroicon-o-x-circle')
                 ->requiresConfirmation()
+                ->modalHeading('Konfirmasi Penolakan')
+                ->modalDescription('Apakah Anda yakin ingin menolak pengajuan ini?')
+                ->modalSubmitActionLabel('Ya, Tolak')
                 ->form([
                     FormsTextarea::make('catatan_revisi')
                         ->label('Alasan Penolakan')
@@ -320,6 +327,7 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
                         'status' => Pengajuan::STATUS_DITOLAK_KADIV,
                         'catatan_revisi' => trim($catatan),
                         'kadiv_approved_by' => Auth::id(),
+                        'kadiv_approved_at' => now(),
                     ]);
                     Notification::make()->title('Pengajuan ditolak')->danger()->send();
                 })

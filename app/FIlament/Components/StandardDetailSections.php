@@ -57,9 +57,11 @@ class StandardDetailSections
                     Grid::make(1)->schema([
                         Repeater::make('surveiHargas')->label('Detail Harga Pembanding')->relationship()->schema([
                             Grid::make(3)->schema([
-                                TextInput::make('tipe_survei')->disabled(),
+                                TextInput::make('tipe_survei')->label('Kategori')->disabled(),
                                 TextInput::make('nama_vendor')->label('Vendor/Link')->disabled(),
-                                TextInput::make('harga')->prefix('Rp')->disabled(),
+                                TextInput::make('harga')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->disabled(),
+                                TextInput::make('kondisi_pajak')->label('Kondisi Pajak')->disabled()->default('Tidak Ada Pajak'),
+                                TextInput::make('nominal_pajak')->label('Nominal Pajak')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->disabled()->default(0),
                             ]),
                         ])->disabled()->columns(1),
                     ]),
@@ -67,7 +69,6 @@ class StandardDetailSections
             ])
                 ->visible(fn(Pengajuan $record) => !is_null($record->ga_surveyed_by))
                 ->collapsible()->collapsed(),
-
             Section::make('Rincian Estimasi Biaya')
                 ->schema([
                     Repeater::make('estimasi_biaya.details')
@@ -80,6 +81,10 @@ class StandardDetailSections
                                 TextInput::make('pajak_info')->label('Pajak')->disabled(),
                             ])
                         ])->disabled()->disableItemCreation()->disableItemDeletion()->disableItemMovement(),
+                    Placeholder::make('estimasi_biaya_empty')
+                        ->label('')
+                        ->content(new HtmlString('<p class="text-gray-500">Belum ada data estimasi biaya tersedia.</p>'))
+                        ->visible(fn($get) => empty($get('estimasi_biaya.details'))),
                     Grid::make(2)->schema([
                         Placeholder::make('estimasi_biaya.total')
                             ->label('TOTAL ESTIMASI BIAYA')
@@ -87,10 +92,10 @@ class StandardDetailSections
                         Placeholder::make('estimasi_biaya.nominal_dp')
                             ->label('NOMINAL DP')
                             ->content(fn($get) => new HtmlString('<b class="text-xl text-primary-600">' . ($get('estimasi_biaya.nominal_dp') ?? 'Tidak ada DP') . '</b>')),
-                    ]),
-                ])->visible(fn(Pengajuan $record) => !is_null($record->ga_surveyed_by))
+                    ])->visible(fn($get) => !empty($get('estimasi_biaya.details'))),
+                ])
+                ->visible(fn(Pengajuan $record) => !is_null($record->ga_surveyed_by))
                 ->collapsible()->collapsed(),
-
             Section::make('Budget Control')
                 ->schema([
                     Grid::make(3)->schema([

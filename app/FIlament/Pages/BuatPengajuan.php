@@ -81,24 +81,17 @@ class BuatPengajuan extends Page implements HasForms
                                 TextInput::make('jabatan')->label('Jabatan')->disabled(),
                             ]),
                         ]),
-                    Wizard\Step::make('Daftar Barang')
+                    Wizard\Step::make('Detail Pengajuan Barang')
                         ->schema([
-                            Repeater::make('items')
+                            Repeater::make('items')->label('')
                                 ->schema([
-                                    Select::make('kategori_barang')->options([
-                                        '1a. Software' => '1a. Software',
-                                        '1b. Hak Paten' => '1b. Hak Paten',
-                                        '1c. Goodwill' => '1c. Goodwill',
-                                        '1d. Lainnya (Aktiva Tidak Berwujud)' => '1d. Lainnya (Aktiva Tidak Berwujud)',
-                                        '2a. Komputer & Hardware Sistem Informasi' => '2a. Komputer & Hardware Sistem Informasi',
-                                        '2b. Peralatan atau Mesin Kantor' => '2b. Peralatan atau Mesin Kantor',
-                                        '2c. Kendaraan Bermotor' => '2c. Kendaraan Bermotor',
-                                        '2d. Perlengkapan Kantor Lainnya' => '2d. Perlengkapan Kantor Lainnya',
-                                        '2e. Lainnya (Aktiva Berwujud)' => '2e. Lainnya (Aktiva Berwujud)',
-                                        'Jasa' => 'Opsi Jasa',
-                                        'Sewa' => 'Opsi Sewa',
+                                    Select::make('kategori_barang')->label('Kategori')->options([
+                                        'Barang IT' => 'Barang IT',
+                                        'Barang Non-IT' => 'Barang Non-IT',
+                                        'Jasa' => 'Jasa',
+                                        'Sewa' => 'Sewa',
                                     ])->required(),
-                                    TextInput::make('nama_barang')->required(),
+                                    TextInput::make('nama_barang')->label('Nama')->required(),
                                     TextInput::make('kuantitas')->numeric()->required()->minValue(1),
                                     Textarea::make('spesifikasi')->required()->columnSpanFull(),
                                     Textarea::make('justifikasi')->required()->columnSpanFull(),
@@ -118,9 +111,6 @@ class BuatPengajuan extends Page implements HasForms
             ->statePath('data');
     }
 
-    /**
-     * Method untuk membuat pengajuan baru dengan logika penentuan alur.
-     */
     public function create(): void
     {
         // 1. Ambil semua data dari form
@@ -145,7 +135,7 @@ class BuatPengajuan extends Page implements HasForms
             if (isset($formData['items'])) {
                 foreach ($formData['items'] as $item) {
                     // Cek apakah ada barang yang terkait IT
-                    if (in_array($item['kategori_barang'], ['1a. Software', '2a. Komputer & Hardware Sistem Informasi'])) {
+                    if ($item['kategori_barang'] === 'Barang IT') {
                         $needsITRecommendation = true;
                         break;
                     }
