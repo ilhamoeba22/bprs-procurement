@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('survei_harga_id')->constrained('survei_hargas')->onDelete('cascade');
             $table->decimal('harga_revisi', 15, 2)->nullable();
             $table->enum('opsi_pajak', ['Pajak Sama', 'Pajak Berbeda'])->default('Pajak Sama');
-            $table->enum('kondisi_pajak', ['Tidak Ada Pajak', 'Pajak ditanggung kita', 'Pajak ditanggung Vendor'])->nullable();
+            $table->enum('kondisi_pajak', ['Tidak Ada Pajak', 'Pajak ditanggung BPRS', 'Pajak ditanggung Vendor'])->nullable();
             $table->enum('jenis_pajak', ['PPh 21', 'PPh 23'])->nullable();
             $table->string('npwp_nik')->nullable();
             $table->string('nama_pemilik_pajak')->nullable();

@@ -78,7 +78,6 @@
             margin: 0;
         }
 
-        /* ...DENGAN CSS BARU INI */
         .section-header-container {
             position: relative;
             margin-bottom: 4px;
@@ -88,18 +87,23 @@
             position: absolute;
             right: 20px;
             top: 70px;
-            /* <-- Ubah menjadi nilai positif untuk mendorongnya ke bawah */
             transform: rotate(-10deg);
-            font-size: 28px;
+            font-size: 24px;
             font-weight: bold;
             color: #28a745;
             border: 3px solid #28a745;
-            padding: 2px 10px;
+            padding: 5px 10px;
             border-radius: 5px;
             text-align: center;
             background-color: #fff;
             opacity: 0.9;
-            /* Sedikit disesuaikan agar lebih menyatu */
+            line-height: 1.2;
+        }
+
+        .paid-stamp-small .date {
+            font-size: 10px;
+            font-weight: normal;
+            display: block;
         }
     </style>
 </head>
@@ -108,9 +112,8 @@
 
     <div class="container">
         <div class="header" style="position: relative;">
-            <img src="{{ public_path('images/logo_mci.png') }}" alt="Logo Kiri" style="position: absolute; left: 0; top: 0; height: 50px;">
-            <img src="{{ public_path('images/ib_logo.png') }}" alt="Logo Kanan" style="position: absolute; right: 0; top: 0; height: 50px;">
-            {{-- Penanda (REVISI) akan muncul otomatis jika ini adalah pengajuan revisi --}}
+            <img src="{{ public_path('images/logo_mci.png') }}" alt="Logo Kiri" style="position: absolute; left: 0; top: 0; height: 45px;">
+            <!-- <img src="{{ public_path('images/ib_logo.png') }}" alt="Logo Kanan" style="position: absolute; right: 0; top: 0; height: 50px;"> -->
             <h3>SURAT PERINTAH MEMBAYAR @if($is_revisi)(REVISI)@endif</h3>
             <p>Nomor: {{ $kode_pengajuan }}/SPM/OPS/{{ date('m/Y') }}</p>
         </div>
@@ -122,9 +125,6 @@
         </div>
 
         <div class="signature-section">
-            {{-- ================================================================= --}}
-            {{-- SECTION 1: DETAIL PENGAJUAN --}}
-            {{-- ================================================================= --}}
             <h4 class="section-title">1. Detail Pengajuan</h4>
             <table class="details-table">
                 <tr>
@@ -137,9 +137,6 @@
                 </tr>
             </table>
 
-            {{-- ================================================================= --}}
-            {{-- SECTION 2: DETAIL HARGA AWAL --}}
-            {{-- ================================================================= --}}
             <h4 class="section-title">@if($is_revisi) 2. Detail Harga Awal (Sebelum Revisi) @else 2. Detail Harga @endif</h4>
             <table class="details-table">
                 <thead>
@@ -176,9 +173,6 @@
                 </tbody>
             </table>
 
-            {{-- ================================================================= --}}
-            {{-- SECTION 3: DETAIL REVISI (HANYA MUNCUL JIKA ADA REVISI) --}}
-            {{-- ================================================================= --}}
             @if($is_revisi && $revision_details)
             <h4 class="section-title" style="color: #c2410c;">3. Detail Revisi Harga</h4>
             <table class="details-table" style="background-color: #fffbeb;">
@@ -209,40 +203,65 @@
             </table>
             @endif
 
-            {{-- ================================================================= --}}
-            {{-- SECTION 4: RINCIAN PEMBAYARAN FINAL --}}
-            {{-- ================================================================= --}}
             <div class="section-header-container">
                 <h4 class="section-title">@if($is_revisi) 4. @else 3. @endif Rincian Pembayaran Final kepada: {{ $payment_details['vendor'] }}</h4>
-
                 @if($is_paid)
                 <div class="paid-stamp-small">
                     LUNAS
+                    <span class="date">{{ $payment_details['tanggal_pelunasan_aktual'] }}</span>
                 </div>
                 @endif
             </div>
             <table class="details-table payment-details-table">
                 <tr style="background-color:#e0e0e0;">
-                    <td><b>TOTAL PERINTAH BAYAR (FINAL)</b></td>
+                    <td style="width: 30%;"><b>TOTAL PERINTAH BAYAR (FINAL)</b></td>
                     <td><b>Rp {{ number_format($total_final, 0, ',', '.') }}</b></td>
                 </tr>
+                <tr>
+                    <td style="width: 30%;">Metode Pembayaran</td>
+                    <td><b>{{ $payment_details['metode_pembayaran'] }}</b></td>
+                </tr>
+
+                @if(strtolower(trim($payment_details['metode_pembayaran'])) == 'transfer')
                 <tr>
                     <td style="width: 30%;">Rekening Tujuan</td>
                     <td><b>{{ $payment_details['nama_bank'] }}</b> - {{ $payment_details['no_rekening'] }} (a.n. {{ $payment_details['nama_rekening'] }})</td>
                 </tr>
+                @endif
+
+                {{-- Logika baru untuk menampilkan detail pembayaran DP atau Lunas --}}
                 @if($payment_details['opsi_pembayaran'] == 'Bisa DP')
                 <tr>
-                    <td>Pembayaran DP (Sudah Dibayar)</td>
-                    <td><b>Rp {{ number_format($payment_details['nominal_dp'], 0, ',', '.') }}</b> (Tgl. {{ $payment_details['tanggal_dp'] }})</td>
+                    <td>Pembayaran DP</td>
+                    <td>
+                        <b>Rp {{ number_format($payment_details['nominal_dp'], 0, ',', '.') }}</b>
+                        @if($payment_details['tanggal_dp_aktual'])
+                        <span style="color: #166534;">(Telah Dibayar Tgl. {{ $payment_details['tanggal_dp_aktual'] }})</span>
+                        @else
+                        <span>(Rencana Tgl. {{ $payment_details['tanggal_dp'] }})</span>
+                        @endif
+                    </td>
                 </tr>
                 <tr>
-                    <td>Sisa Pelunasan (Termasuk Pajak)</td>
+                    <td>Sisa Pelunasan</td>
                     <td>
                         <b>Rp {{ number_format($total_final - $payment_details['nominal_dp'], 0, ',', '.') }}</b>
-
-                        {{-- Tampilkan tanggal jika sudah lunas --}}
-                        @if($is_paid)
-                        (Tgl. {{ $payment_details['tanggal_pelunasan'] }})
+                        @if($payment_details['tanggal_pelunasan_aktual'])
+                        <span style="color: #166534;">(Telah Lunas Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
+                        @else
+                        <span>(Rencana Tgl. {{ $payment_details['tanggal_pelunasan'] }})</span>
+                        @endif
+                    </td>
+                </tr>
+                @elseif($payment_details['opsi_pembayaran'] == 'Langsung Lunas')
+                <tr>
+                    <td>Pembayaran Lunas</td>
+                    <td>
+                        <b>Rp {{ number_format($total_final, 0, ',', '.') }}</b>
+                        @if($payment_details['tanggal_pelunasan_aktual'])
+                        <span style="color: #166534;">(Telah Lunas Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
+                        @else
+                        <span>(Rencana Tgl. {{ $payment_details['tanggal_pelunasan'] }})</span>
                         @endif
                     </td>
                 </tr>

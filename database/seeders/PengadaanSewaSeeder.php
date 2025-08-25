@@ -62,7 +62,7 @@ class PengadaanSewaSeeder extends Seeder
             'nama_vendor' => 'Pemilik Ruko Bpk. H. Ahmad',
             'harga' => 150000000,
             'rincian_harga' => 'Harga sewa untuk 2 tahun.',
-            'kondisi_pajak' => 'Pajak ditanggung kita',
+            'kondisi_pajak' => 'Pajak ditanggung BPRS',
             'jenis_pajak' => 'PPh 23',
             'npwp_nik' => '112233445566778',
             'nama_pemilik_pajak' => 'H. Ahmad Subarjo',

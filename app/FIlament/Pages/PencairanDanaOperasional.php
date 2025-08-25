@@ -119,7 +119,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                         foreach ($record->items as $item) {
                             $survey = $item->surveiHargas
                                 ->where('nama_vendor', $vendorName)
-                                ->where('kondisi_pajak', 'Pajak ditanggung kita')
+                                ->where('kondisi_pajak', 'Pajak ditanggung BPRS')
                                 ->first();
                             if ($survey) {
                                 $totalPajakAwal += $survey->nominal_pajak;
@@ -207,7 +207,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                             foreach ($items as $item) {
                                 $survey = $surveys->where('id_item', $item->id_item)->first();
                                 $itemCost = $survey->harga * $item->kuantitas;
-                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung kita' ? ($survey->nominal_pajak ?? 0) : 0;
+                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung BPRS' ? ($survey->nominal_pajak ?? 0) : 0;
                                 $vendorTotal += ($itemCost + $taxCost);
                             }
                             $vendorTotals[$namaVendor] = $vendorTotal;
@@ -233,7 +233,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                             $itemCost = $survey->harga * $item->kuantitas;
                             $taxInfo = 'Tidak ada pajak';
                             $taxCost = 0;
-                            if ($survey->kondisi_pajak === 'Pajak ditanggung kita') {
+                            if ($survey->kondisi_pajak === 'Pajak ditanggung BPRS') {
                                 $taxCost = $survey->nominal_pajak ?? 0;
                                 $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
                             }
@@ -314,7 +314,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                 ->icon('heroicon-o-currency-dollar')
                 ->modalWidth('4xl')
                 ->modalHeading(function (Pengajuan $record) {
-                    // Judul modal dinamis berdasarkan status pembayaran
                     $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
                     if ($finalVendor?->opsi_pembayaran === 'Bisa DP' && !$finalVendor?->bukti_dp) {
                         return 'Form Pembayaran Down Payment (DP)';
@@ -327,6 +326,8 @@ class PencairanDanaOperasional extends Page implements HasTable
                         return [Placeholder::make('error')->content('Data vendor final tidak ditemukan!')];
                     }
 
+                    $metodePembayaran = strtolower(trim($finalVendor->metode_pembayaran ?? ''));
+
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
 
                     $displayTotalBarang = 0;
@@ -335,20 +336,18 @@ class PencairanDanaOperasional extends Page implements HasTable
                     $pajakDitanggungKita = false;
 
                     if ($latestRevisi) {
-                        // JIKA ADA REVISI, GUNAKAN DATA REVISI
                         $displayTotalBarang = $latestRevisi->harga_revisi;
-                        if ($latestRevisi->kondisi_pajak === 'Pajak ditanggung kita') {
+                        if ($latestRevisi->kondisi_pajak === 'Pajak ditanggung BPRS') {
                             $pajakDitanggungKita = true;
                             $displayTotalPajak = $latestRevisi->nominal_pajak;
                             $displayJenisPajak = $latestRevisi->jenis_pajak;
                         }
                     } else {
-                        // JIKA TIDAK ADA REVISI, HITUNG DARI SURVEI (LOGIKA LAMA)
                         foreach ($record->items as $item) {
                             $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
                             if ($survey) {
                                 $displayTotalBarang += ($survey->harga * $item->kuantitas);
-                                if ($survey->kondisi_pajak === 'Pajak ditanggung kita') {
+                                if ($survey->kondisi_pajak === 'Pajak ditanggung BPRS') {
                                     $pajakDitanggungKita = true;
                                     $displayTotalPajak += $survey->nominal_pajak ?? 0;
                                     if (!$displayJenisPajak && $survey->jenis_pajak) {
@@ -380,7 +379,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                             foreach ($items as $item) {
                                 $survey = $surveys->where('id_item', $item->id_item)->first();
                                 $itemCost = $survey->harga * $item->kuantitas;
-                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung kita' ? ($survey->nominal_pajak ?? 0) : 0;
+                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung BPRS' ? ($survey->nominal_pajak ?? 0) : 0;
                                 $vendorTotal += ($itemCost + $taxCost);
                             }
                             $vendorTotals[$namaVendor] = $vendorTotal;
@@ -406,7 +405,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                             $itemCost = $survey->harga * $item->kuantitas;
                             $taxInfo = 'Tidak ada pajak';
                             $taxCost = 0;
-                            if ($survey->kondisi_pajak === 'Pajak ditanggung kita') {
+                            if ($survey->kondisi_pajak === 'Pajak ditanggung BPRS') {
                                 $taxCost = $survey->nominal_pajak ?? 0;
                                 $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
                             }
@@ -437,18 +436,24 @@ class PencairanDanaOperasional extends Page implements HasTable
 
                     // 4. Buat form dinamis
                     return [
-                        Section::make('Detail Vendor & Rekening')->schema([
-                            Grid::make(3)->schema([
-                                TextInput::make('nama_vendor')->default($finalVendor->nama_vendor)->disabled(),
-                                TextInput::make('nama_bank')->default($finalVendor->nama_bank)->disabled(),
-                                TextInput::make('no_rekening')->default($finalVendor->no_rekening)->disabled(),
-                                TextInput::make('nama_rekening')->label('Atas Nama')->default($finalVendor->nama_rekening)->disabled(),
-                                TextInput::make('jenis_pajak')->label('Jenis Pajak')->default($displayJenisPajak)->disabled()->visible($pajakDitanggungKita),
-                            ]),
-                        ])->collapsible(),
+                        Section::make('Detail Vendor & Rekening')
+                            ->schema([
+                                Grid::make(3)->schema([
+                                    TextInput::make('nama_vendor')->default($finalVendor->nama_vendor)->disabled(),
+                                    TextInput::make('nama_bank')->default($finalVendor->nama_bank)->disabled(),
+                                    TextInput::make('no_rekening')->default($finalVendor->no_rekening)->disabled(),
+                                    TextInput::make('nama_rekening')->label('Atas Nama')->default($finalVendor->nama_rekening)->disabled(),
+                                ]),
+                            ])
+                            ->collapsible()
+                            ->visible($metodePembayaran === 'transfer'),
 
                         Section::make('Rincian Pembayaran')->schema([
                             Grid::make(3)->schema([
+                                TextInput::make('metode_pembayaran')
+                                    ->label('Metode Bayar')
+                                    ->default($finalVendor->metode_pembayaran)
+                                    ->disabled(),
                                 TextInput::make('total_nilai_barang')->label('Total Nilai Barang')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->default($displayTotalBarang)->disabled(),
                                 TextInput::make('total_pajak')->label('Total Pajak (Ditanggung Perusahaan)')->prefix('Rp')->formatStateUsing(fn($state) => number_format($state, 0, ',', '.'))->default($displayTotalPajak)->disabled()->visible($pajakDitanggungKita),
                                 TextInput::make('opsi_pembayaran')->label('Opsi Bayar')->default($finalVendor->opsi_pembayaran)->disabled(),
@@ -532,7 +537,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                     if (isset($data['bukti_dp'])) {
                         $finalVendor->update([
                             'bukti_dp' => $data['bukti_dp'],
-                            'tanggal_dp' => now(),
+                            'tanggal_dp_aktual' => now(),
                         ]);
                         $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
                         $catatanTambahan = "\n\n[Pembayaran DP oleh " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
@@ -543,7 +548,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                     if (isset($data['bukti_pelunasan'])) {
                         $updateData = [
                             'bukti_pelunasan' => $data['bukti_pelunasan'],
-                            'tanggal_pelunasan' => now(),
+                            'tanggal_pelunasan_aktual' => now(),
                         ];
 
                         // Simpan bukti_pajak jika diupload
@@ -552,7 +557,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                         }
 
                         $finalVendor->update($updateData);
-
                         $newStatus = Pengajuan::STATUS_SUDAH_BAYAR;
                         $catatanTambahan = "\n\n[Pelunasan oleh " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
                         $notificationTitle = 'Pelunasan berhasil disimpan.';
@@ -562,6 +566,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                         'status' => $newStatus,
                         'catatan_revisi' => trim(($record->catatan_revisi ?? '') . $catatanTambahan),
                         'disbursed_by' => Auth::id(),
+                        'disbursed_at' => now(),
                     ]);
 
                     Notification::make()->title($notificationTitle)->success()->send();
@@ -582,14 +587,13 @@ class PencairanDanaOperasional extends Page implements HasTable
                         return;
                     }
 
-                    // 1. Hitung rincian item & total original (barang & pajak)
                     $itemsOriginal = [];
                     $totalNilaiBarangOriginal = 0;
                     $totalPajakOriginal = 0;
                     foreach ($record->items as $item) {
                         $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
                         $hargaSatuan = $survey->harga ?? 0;
-                        $pajakItem = ($survey && $survey->kondisi_pajak === 'Pajak ditanggung kita') ? ($survey->nominal_pajak ?? 0) : 0;
+                        $pajakItem = ($survey && $survey->kondisi_pajak === 'Pajak ditanggung BPRS') ? ($survey->nominal_pajak ?? 0) : 0;
                         $subtotal = $hargaSatuan * $item->kuantitas;
                         $itemsOriginal[] = [
                             'barang' => $item->nama_barang,
@@ -602,7 +606,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                     }
                     $totalBiayaOriginal = $totalNilaiBarangOriginal + $totalPajakOriginal;
 
-                    // 2. Cek revisi dan siapkan semua data final
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
                     $isRevisi = !is_null($latestRevisi);
                     $revisionDetails = null;
@@ -622,7 +625,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                         $totalFinal = $totalBiayaOriginal;
                     }
 
-                    // 5. Siapkan data QR Code untuk verifikasi tanda tangan
                     $direkturQrCode = null;
                     $kadivGaQrCode = null;
                     $direktur = null;
@@ -646,7 +648,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                         $kadivGaQrCode = 'data:image/png;base64,' . base64_encode($qrCodeData);
                     }
 
-                    // 3. Kumpulkan semua data yang akan dikirim ke template PDF
                     $data = [
                         'kode_pengajuan' => $record->kode_pengajuan,
                         'tanggal_pengajuan' => $record->created_at->translatedFormat('d F Y'),
@@ -656,15 +657,12 @@ class PencairanDanaOperasional extends Page implements HasTable
                         'total_nilai_barang_original' => $totalNilaiBarangOriginal,
                         'total_pajak_original' => $totalPajakOriginal,
                         'total_biaya_original' => $totalBiayaOriginal,
-
                         'total_nilai_barang_final' => $totalNilaiBarangFinal,
                         'total_pajak_final' => $totalPajakFinal,
                         'total_final' => $totalFinal,
-
                         'is_revisi' => $isRevisi,
                         'revision_details' => $revisionDetails,
 
-                        // Data Pembayaran Terpusat
                         'payment_details' => [
                             'vendor' => $finalVendor->nama_vendor,
                             'metode_pembayaran' => $finalVendor->metode_pembayaran,
@@ -673,11 +671,12 @@ class PencairanDanaOperasional extends Page implements HasTable
                             'no_rekening' => $finalVendor->no_rekening,
                             'nama_rekening' => $finalVendor->nama_rekening,
                             'nominal_dp' => $finalVendor->nominal_dp,
-                            'tanggal_dp' => $finalVendor->tanggal_dp ? Carbon::parse($finalVendor->tanggal_dp)->translatedFormat('d M Y') : '-',
-                            'tanggal_pelunasan' => $finalVendor->tanggal_pelunasan ? Carbon::parse($finalVendor->tanggal_pelunasan)->translatedFormat('d M Y') : '-',
+                            'tanggal_dp' => $finalVendor->tanggal_dp ? Carbon::parse($finalVendor->tanggal_dp)->translatedFormat('d F Y') : '-',
+                            'tanggal_dp_aktual' => $finalVendor->tanggal_dp_aktual ? Carbon::parse($finalVendor->tanggal_dp_aktual)->translatedFormat('d F Y') : null,
+                            'tanggal_pelunasan' => $finalVendor->tanggal_pelunasan ? Carbon::parse($finalVendor->tanggal_pelunasan)->translatedFormat('d F Y') : '-',
+                            'tanggal_pelunasan_aktual' => $finalVendor->tanggal_pelunasan_aktual ? Carbon::parse($finalVendor->tanggal_pelunasan_aktual)->translatedFormat('d F Y') : null,
                         ],
 
-                        // Data Tanda Tangan
                         'kadivGaName' => $kadivGa?->nama_user ?? '(Kadiv GA)',
                         'direkturName' => $direktur?->nama_user,
                         'direkturJabatan' => $direkturJabatan,
@@ -689,7 +688,8 @@ class PencairanDanaOperasional extends Page implements HasTable
                     $pdf = Pdf::loadView('documents.spm_template', $data);
                     $fileName = 'SPM_' . str_replace('/', '_', $record->kode_pengajuan) . '.pdf';
                     return response()->streamDownload(fn() => print($pdf->output()), $fileName);
-                }),
+                })
+            // ->visible(fn(Pengajuan $record): bool => $record->status !== Pengajuan::STATUS_SELESAI),
         ];
     }
 }

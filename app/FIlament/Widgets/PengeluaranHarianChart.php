@@ -20,7 +20,7 @@ class PengeluaranHarianChart extends ChartWidget
         return [
             // 'today' => 'Hari Ini',
             '7d'    => '7 Hari Terakhir',
-            '30d'   => '1 Bulan Terakhir',
+            // '30d'   => '1 Bulan Terakhir',
             '3m'    => '3 Bulan Terakhir',
             '1y'    => '1 Tahun Terakhir',
             '3y'    => '3 Tahun Terakhir',
@@ -68,10 +68,10 @@ class PengeluaranHarianChart extends ChartWidget
                 $start = now()->subDays(6)->startOfDay();
                 $end   = now()->endOfDay();
                 break;
-            case '30d':
-                $start = now()->subDays(29)->startOfDay();
-                $end   = now()->endOfDay();
-                break;
+            // case '30d':
+            //     $start = now()->subDays(29)->startOfDay();
+            //     $end   = now()->endOfDay();
+            //     break;
             case '3m':
                 $start = now()->subMonths(2)->startOfMonth();
                 $end   = now()->endOfDay();

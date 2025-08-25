@@ -91,7 +91,7 @@ class PengecatanKantorSeeder extends Seeder
                 'harga' => $hargaJasa,
                 'rincian_harga' => 'Harga borongan untuk seluruh area, sudah termasuk alat kerja dasar.',
                 // Skenario Pajak Bervariasi
-                'kondisi_pajak' => $vendor['nama'] === 'CV. Karya Mandiri' ? 'Pajak ditanggung kita' : 'Pajak ditanggung Vendor',
+                'kondisi_pajak' => $vendor['nama'] === 'CV. Karya Mandiri' ? 'Pajak ditanggung BPRS' : 'Pajak ditanggung Vendor',
                 'jenis_pajak' => 'PPh 23',
                 'npwp_nik' => $vendor['npwp'],
                 'nama_pemilik_pajak' => $vendor['pemilik'],
@@ -112,7 +112,7 @@ class PengecatanKantorSeeder extends Seeder
                 'nama_vendor' => $vendor['nama'],
                 'harga' => $hargaSewa,
                 'rincian_harga' => 'Harga sewa untuk 5 hari kerja.',
-                'kondisi_pajak' => 'Pajak ditanggung kita', // Sewa alat selalu kena PPh
+                'kondisi_pajak' => 'Pajak ditanggung BPRS', // Sewa alat selalu kena PPh
                 'jenis_pajak' => 'PPh 23',
                 'npwp_nik' => $vendor['npwp'],
                 'nama_pemilik_pajak' => $vendor['pemilik'],

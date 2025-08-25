@@ -100,7 +100,7 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                         foreach ($record->items as $item) {
                             $survey = $item->surveiHargas
                                 ->where('nama_vendor', $vendorName)
-                                ->where('kondisi_pajak', 'Pajak ditanggung kita')
+                                ->where('kondisi_pajak', 'Pajak ditanggung BPRS')
                                 ->first();
                             if ($survey) {
                                 $totalPajakAwal += $survey->nominal_pajak;
@@ -120,14 +120,24 @@ class PersetujuanKadivOperasional extends Page implements HasTable
 
             BadgeColumn::make('tindakan_saya')
                 ->label('Keterangan')
-                ->state(fn(Pengajuan $record): string => match ($record->status) {
-                    Pengajuan::STATUS_SELESAI => 'Pengajuan Selesai',
-                    Pengajuan::STATUS_SUDAH_BAYAR => 'Menunggu Penyelesaian',
-                    default => $record->ga_surveyed_by === Auth::id() ? 'Sudah Disurvei' : 'Menunggu Aksi',
+                ->state(function (Pengajuan $record): string {
+                    // Prioritas utama: jika user ini sudah validasi, tampilkan "Sudah Divalidasi"
+                    if ($record->kadiv_ops_budget_approved_by === Auth::id()) {
+                        return 'Sudah Divalidasi';
+                    }
+
+                    // Jika belum, tampilkan status relevan lainnya
+                    return match ($record->status) {
+                        Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET,
+                        Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS
+                        => 'Menunggu Aksi',
+                        Pengajuan::STATUS_SELESAI => 'Pengajuan Selesai',
+                        default => 'Proses Lanjut', // Untuk status setelah tahap ini
+                    };
                 })
                 ->color(fn(string $state): string => match ($state) {
-                    'Sudah Disurvei', 'Pengajuan Selesai' => 'success',
-                    'Menunggu Penyelesaian' => 'warning',
+                    'Sudah Divalidasi', 'Pengajuan Selesai' => 'success',
+                    'Menunggu Aksi' => 'warning',
                     default => 'gray',
                 }),
         ];
@@ -140,7 +150,6 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                 ->modalHeading(fn(Pengajuan $record): string => "Detail Pengajuan {$record->kode_pengajuan}")
                 ->modalWidth('4xl')
                 ->mountUsing(function (Form $form, Pengajuan $record) {
-                    // 1. Memuat semua relasi yang dibutuhkan secara efisien
                     $record->load([
                         'items.surveiHargas.revisiHargas.direvisiOleh',
                         'items.surveiHargas.revisiHargas.revisiBudgetApprover',
@@ -158,38 +167,50 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                     ]);
 
                     $formData = $record->toArray();
-
-                    // 2. Menyiapkan nama-nama approver untuk ditampilkan di StandardDetailSections
                     $formData['budget_approved_by_name'] = $record->approverBudget?->nama_user;
                     $formData['kadiv_ops_budget_approved_by_name'] = $record->validatorBudgetOps?->nama_user;
                     $formData['kadiv_ga_approved_by_name'] = $record->approverKadivGa?->nama_user;
                     $formData['direktur_operasional_approved_by_name'] = $record->approverDirOps?->nama_user;
                     $formData['direktur_utama_approved_by_name'] = $record->approverDirUtama?->nama_user;
-                    // dd($formData);
+
                     $getScenarioDetails = function ($items) use ($record) {
                         $details = [];
                         $totalCost = 0;
                         $nominalDp = 0;
                         $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
-                        if ($groupedSurveys->isEmpty()) return null;
+                        if ($groupedSurveys->isEmpty()) {
+                            return [
+                                'details' => [],
+                                'total' => 'Rp 0',
+                                'nominal_dp' => 'Tidak ada DP'
+                            ];
+                        }
 
                         $vendorTotals = [];
                         foreach ($groupedSurveys as $namaVendor => $surveys) {
-                            $allItemsCovered = $items->every(fn($item) => $surveys->where('id_item', $item->id_item)->isNotEmpty());
-                            if (!$allItemsCovered) continue;
-
                             $vendorTotal = 0;
+                            $allItemsCovered = true;
                             foreach ($items as $item) {
                                 $survey = $surveys->where('id_item', $item->id_item)->first();
+                                if (!$survey) {
+                                    $allItemsCovered = false;
+                                    break;
+                                }
                                 $itemCost = $survey->harga * $item->kuantitas;
-                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung kita' ? ($survey->nominal_pajak ?? 0) : 0;
+                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)' ? ($survey->nominal_pajak ?? 0) : 0;
                                 $vendorTotal += ($itemCost + $taxCost);
                             }
-                            $vendorTotals[$namaVendor] = $vendorTotal;
+                            if ($allItemsCovered) {
+                                $vendorTotals[$namaVendor] = $vendorTotal;
+                            }
                         }
 
                         if (empty($vendorTotals)) {
-                            return null;
+                            return [
+                                'details' => [],
+                                'total' => 'Rp 0',
+                                'nominal_dp' => 'Tidak ada DP'
+                            ];
                         }
 
                         $cheapestVendor = array_key_first($vendorTotals);
@@ -208,9 +229,11 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                             $itemCost = $survey->harga * $item->kuantitas;
                             $taxInfo = 'Tidak ada pajak';
                             $taxCost = 0;
-                            if ($survey->kondisi_pajak === 'Pajak ditanggung kita') {
+                            if ($survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)') {
                                 $taxCost = $survey->nominal_pajak ?? 0;
                                 $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
+                            } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
+                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Included';
                             }
                             $details[] = [
                                 'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
@@ -226,7 +249,7 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                             $nominalDp = $vendorPembayaran->nominal_dp;
                         }
 
-                        return empty($details) ? null : [
+                        return [
                             'details' => $details,
                             'total' => 'Rp ' . number_format($totalCost, 0, ',', '.'),
                             'nominal_dp' => $nominalDp > 0 ? 'Rp ' . number_format($nominalDp, 0, ',', '.') : 'Tidak ada DP'
@@ -234,13 +257,10 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                     };
                     $formData['estimasi_biaya'] = $getScenarioDetails($record->items);
 
-                    // 4. Menyiapkan data untuk RevisiTimelineSection (jika ada)
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
                     if ($latestRevisi) {
                         $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
-
-                        // PERBAIKAN FINAL: Gunakan data snapshot dari tabel revisi
-                        $totalBiayaAwal = $latestRevisi->harga_awal; // <-- Mengambil dari snapshot
+                        $totalBiayaAwal = $latestRevisi->harga_awal;
                         $totalBiayaSetelahRevisi = $latestRevisi->harga_revisi + $latestRevisi->nominal_pajak;
                         $selisihTotal = $latestRevisi->harga_revisi - $totalBiayaAwal;
 
@@ -254,8 +274,6 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                             'total_setelah_revisi' => $totalBiayaSetelahRevisi,
                             'nominal_dp' => $finalVendor?->nominal_dp,
                         ]];
-
-
                         $formData['revisi_budget_status_pengadaan'] = $latestRevisi->revisi_budget_status_pengadaan;
                         $formData['revisi_budget_catatan_pengadaan'] = $latestRevisi->revisi_budget_catatan_pengadaan;
                         $formData['revisi_budget_approver_name'] = $latestRevisi->revisiBudgetApprover?->nama_user;
@@ -272,7 +290,6 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                         $formData['revisi_direktur_utama_approver_name'] = $latestRevisi->revisiDirekturUtamaApprover?->nama_user;
                     }
 
-                    // 5. Mengisi form dengan semua data yang telah disiapkan
                     $form->fill($formData);
                 })
                 ->form([
@@ -290,6 +307,7 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                     $record->update([
                         'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA,
                         'kadiv_ops_budget_approved_by' => Auth::id(),
+                        'kadiv_ops_budget_approved_at' => now(), // <-- BARIS DITAMBAHKAN
                     ]);
                     Notification::make()->title('Validasi budget telah dikonfirmasi.')->success()->send();
                 })
@@ -313,7 +331,8 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                     ]);
 
                     $record->update([
-                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI
+                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI,
+                        'kadiv_ops_budget_approved_at' => now(), // <-- BARIS DITAMBAHKAN
                     ]);
 
                     Notification::make()->title('Validasi budget revisi telah dikonfirmasi.')->success()->send();

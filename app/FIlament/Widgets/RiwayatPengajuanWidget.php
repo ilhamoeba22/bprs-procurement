@@ -6,6 +6,7 @@ use ZipArchive;
 use Carbon\Carbon;
 use Filament\Tables;
 use App\Models\Pengajuan;
+use App\Models\SurveiHarga;
 use Filament\Tables\Table;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Tables\Actions\Action;
@@ -73,11 +74,9 @@ class RiwayatPengajuanWidget extends BaseWidget
                     ->icon('heroicon-o-document-arrow-down')
                     ->color('info')
                     ->action(function (Pengajuan $record) {
-                        // Eager load semua relasi yang dibutuhkan untuk laporan
                         $record->load([
                             'pemohon.divisi',
                             'pemohon.jabatan',
-                            'items.surveiHargas',
                             'items.surveiHargas.revisiHargas' => function ($query) {
                                 $query->with([
                                     'direvisiOleh.jabatan',
@@ -101,7 +100,6 @@ class RiwayatPengajuanWidget extends BaseWidget
                             'disbursedBy.jabatan'
                         ]);
 
-                        // Fungsi helper untuk generate QR Code
                         $generateQrCode = function ($user) use ($record) {
                             if (!$user) return null;
                             $url = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $user]);
@@ -109,24 +107,100 @@ class RiwayatPengajuanWidget extends BaseWidget
                             return 'data:image/png;base64,' . base64_encode($qrCodeData);
                         };
 
-                        // Ambil data atasan dan direksi yang relevan
                         $atasan = $record->approverKadiv ?? $record->approverManager;
                         $direksi = $record->approverDirUtama ?? $record->approverDirOps;
-
-                        // Ambil data revisi terakhir jika ada
                         $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->first();
-
-                        // Ambil data vendor final
                         $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
 
-                        // Siapkan data untuk dikirim ke view
+                        $estimasiBiaya = null;
+                        if ($finalVendor) {
+                            $itemsOriginalDetails = [];
+                            $totalNilaiBarangOriginal = 0;
+                            $totalPajakOriginal = 0;
+                            $taxDescriptionOriginal = 'Tidak Ada Pajak';
+
+                            foreach ($record->items as $item) {
+                                $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
+                                if (!$survey) continue;
+
+                                $hargaSatuan = $survey->harga ?? 0;
+                                $subtotal = $hargaSatuan * $item->kuantitas;
+                                $itemsOriginalDetails[] = [
+                                    'nama_barang' => $item->nama_barang,
+                                    'kuantitas' => $item->kuantitas,
+                                    'harga_satuan' => $hargaSatuan,
+                                    'total_item' => $subtotal,
+                                ];
+                                $totalNilaiBarangOriginal += $subtotal;
+
+                                // [PERBAIKAN] Cek dua kemungkinan kondisi pajak
+                                $isTaxExclude = in_array($survey->kondisi_pajak, ['Pajak ditanggung Perusahaan (Exclude)', 'Pajak ditanggung BPRS']);
+
+                                if ($isTaxExclude) {
+                                    $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                    $taxDescriptionOriginal = ($survey->jenis_pajak ?? 'Pajak') . ' (Exclude)';
+                                } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
+                                    $taxDescriptionOriginal = 'Pajak ditanggung Vendor (Include)';
+                                    $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                }
+                            }
+
+                            $totalNilaiBarangFinal = $totalNilaiBarangOriginal;
+                            $totalPajakFinal = $totalPajakOriginal;
+                            $taxDescriptionFinal = $taxDescriptionOriginal;
+
+                            if ($latestRevisi) {
+                                $totalNilaiBarangFinal = $latestRevisi->harga_revisi;
+                                $totalPajakFinal = $latestRevisi->nominal_pajak;
+                                $taxDescriptionFinal = $latestRevisi->jenis_pajak ?? 'Pajak (Revisi)';
+                                if ($totalPajakFinal == 0) $taxDescriptionFinal = 'Tidak Ada Pajak';
+                            }
+
+                            $totalBiayaFinal = $totalNilaiBarangFinal;
+                            if (strpos($taxDescriptionFinal, 'Include') === false) {
+                                $totalBiayaFinal += $totalPajakFinal;
+                            }
+
+                            $estimasiBiaya = [
+                                'details' => $itemsOriginalDetails,
+                                'subtotal' => $totalNilaiBarangFinal,
+                                'pajak_info_text' => $taxDescriptionFinal,
+                                'pajak_info_nominal' => $totalPajakFinal,
+                                'total_biaya' => $totalBiayaFinal,
+                            ];
+                        }
+
+                        // [LOGIKA BARU] Menyiapkan data untuk Rincian Pembayaran Final
+                        $total_final = $estimasiBiaya['total_biaya'] ?? 0;
+                        $is_paid = $finalVendor ? !empty($finalVendor->bukti_pelunasan) : false;
+                        $payment_details = null;
+                        if ($finalVendor) {
+                            $payment_details = [
+                                'vendor' => $finalVendor->nama_vendor,
+                                'metode_pembayaran' => $finalVendor->metode_pembayaran,
+                                'opsi_pembayaran' => $finalVendor->opsi_pembayaran,
+                                'nama_bank' => $finalVendor->nama_bank,
+                                'no_rekening' => $finalVendor->no_rekening,
+                                'nama_rekening' => $finalVendor->nama_rekening,
+                                'nominal_dp' => $finalVendor->nominal_dp,
+                                'tanggal_dp' => $finalVendor->tanggal_dp ? \Carbon\Carbon::parse($finalVendor->tanggal_dp)->translatedFormat('d F Y') : '-',
+                                'tanggal_dp_aktual' => $finalVendor->tanggal_dp_aktual ? \Carbon\Carbon::parse($finalVendor->tanggal_dp_aktual)->translatedFormat('d F Y') : null,
+                                'tanggal_pelunasan' => $finalVendor->tanggal_pelunasan ? \Carbon\Carbon::parse($finalVendor->tanggal_pelunasan)->translatedFormat('d F Y') : '-',
+                                'tanggal_pelunasan_aktual' => $finalVendor->tanggal_pelunasan_aktual ? \Carbon\Carbon::parse($finalVendor->tanggal_pelunasan_aktual)->translatedFormat('d F Y') : null,
+                            ];
+                        }
+
                         $data = [
                             'pengajuan' => $record,
                             'atasan' => $atasan,
                             'direksi' => $direksi,
                             'latestRevisi' => $latestRevisi,
                             'finalVendor' => $finalVendor,
-                            'qrCodes' => [ // Mengelompokkan QR Code agar lebih rapi
+                            'estimasiBiaya' => $estimasiBiaya,
+                            'payment_details' => $payment_details,
+                            'total_final' => $total_final,
+                            'is_paid' => $is_paid,
+                            'qrCodes' => [
                                 'pemohon' => $generateQrCode($record->pemohon),
                                 'atasan' => $generateQrCode($atasan),
                                 'it' => $generateQrCode($record->recommenderIt),
@@ -143,6 +217,7 @@ class RiwayatPengajuanWidget extends BaseWidget
                         $fileName = 'Laporan_Akhir_' . str_replace('/', '_', $record->kode_pengajuan) . '.pdf';
                         return response()->streamDownload(fn() => print($pdf->output()), $fileName);
                     }),
+
                 Action::make('download_lampiran')
                     ->label('Lampiran')
                     ->icon('heroicon-o-folder-arrow-down')
