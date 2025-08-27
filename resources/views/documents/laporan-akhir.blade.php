@@ -132,29 +132,20 @@
         /* [PERUBAHAN] CSS untuk Stempel LUNAS */
         .paid-stamp {
             font-size: 20px;
-            /* Ukuran font dikecilkan */
             font-weight: bold;
             color: #208a39;
-            /* Warna teks hijau tua */
-            border: 3px solid #a3d9b1;
-            /* Border dikecilkan */
-            /* Warna border hijau muda */
-            background-color: rgba(5, 7, 5, 0.85);
-            /* Warna background hijau transparan */
+            border: 3px solid #208a39;
+            background-color: rgba(140, 253, 117, 0.67);
             padding: 15px 8px;
-            /* Padding dikecilkan */
             border-radius: 6px;
-            /* Border radius dikecilkan */
             text-align: center;
             line-height: 1.2;
             transform: rotate(-15deg);
             margin-top: 15px;
-            /* Margin dikecilkan */
         }
 
         .paid-stamp .date {
             font-size: 10px;
-            /* Ukuran font tanggal dikecilkan */
             font-weight: normal;
             display: block;
         }
@@ -163,7 +154,6 @@
         .signature-grid {
             text-align: center;
             margin-top: 10px;
-            /* Margin atas diperkecil */
         }
 
         .signature-section-content {
@@ -511,22 +501,26 @@
                         <td>: {!! nl2br(e(trim($pengajuan->catatan_revisi))) !!}</td>
                     </tr>
                     @endif
+                    @if(!empty($pengajuan->catatan_budget))
+                    <tr>
+                        <td class="label">Catatan Budget Control</td>
+                        <td>: {{ $pengajuan->catatan_budget }}</td>
+                    </tr>
+                    @endif
                     @if(!empty($pengajuan->kadiv_ga_catatan))
                     <tr>
                         <td class="label">Catatan Kadiv GA</td>
                         <td>: {{ $pengajuan->kadiv_ga_catatan }}</td>
                     </tr>
                     @endif
-                    @if(!empty($pengajuan->direktur_operasional_catatan))
+                    @php
+                    $catatanDireksi = $pengajuan->direktur_utama_catatan ?? $pengajuan->direktur_operasional_catatan;
+                    $jabatanDireksi = $pengajuan->direktur_utama_catatan ? 'Direktur Utama' : 'Direktur Operasional';
+                    @endphp
+                    @if(!empty($catatanDireksi))
                     <tr>
-                        <td class="label">Catatan Direktur Operasional</td>
-                        <td>: {{ $pengajuan->direktur_operasional_catatan }}</td>
-                    </tr>
-                    @endif
-                    @if(!empty($pengajuan->direktur_utama_catatan))
-                    <tr>
-                        <td class="label">Catatan Direktur Utama</td>
-                        <td>: {{ $pengajuan->direktur_utama_catatan }}</td>
+                        <td class="label">Catatan {{ $jabatanDireksi }}</td>
+                        <td>: {{ $catatanDireksi }}</td>
                     </tr>
                     @endif
                 </table>

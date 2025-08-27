@@ -5,16 +5,22 @@ namespace App\Filament\Pages;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
+use Illuminate\Support\HtmlString;
+use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
 use Filament\Forms\Components\Radio;
 use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Textarea;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
 use Illuminate\Database\Eloquent\Builder;
+use Filament\Forms\Components\Placeholder;
 use Filament\Tables\Concerns\InteractsWithTable;
 use App\Filament\Components\RevisiTimelineSection;
 use App\Filament\Components\StandardDetailSections;
@@ -139,6 +145,35 @@ class PersetujuanDirekturUtama extends Page implements HasTable
                     'Menunggu Aksi' => 'warning',
                     default => 'gray',
                 }),
+        ];
+    }
+
+    private function getSummarySchema(): array
+    {
+        return [
+            Section::make('Ringkasan Pengajuan')
+                ->schema([
+                    Repeater::make('items')->relationship()->label('Barang yang Diajukan')
+                        ->schema([
+                            Grid::make(2)->schema([
+                                TextInput::make('nama_barang')->disabled(),
+                                TextInput::make('kuantitas')->disabled(),
+                            ])
+                        ])->disabled()->columns(1),
+                    Grid::make(2)->schema([
+                        Placeholder::make('estimasi_biaya.total')
+                            ->label('TOTAL ESTIMASI BIAYA')
+                            ->content(fn($get) => new HtmlString('<b class="text-lg text-primary-600">' . ($get('estimasi_biaya.total') ?? 'Rp 0') . '</b>')),
+                        Placeholder::make('estimasi_biaya.nominal_dp')
+                            ->label('NOMINAL DP')
+                            ->content(fn($get) => new HtmlString('<b class="text-lg text-primary-600">' . ($get('estimasi_biaya.nominal_dp') ?? 'Tidak ada DP') . '</b>')),
+                    ]),
+                    Grid::make(2)->schema([
+                        TextInput::make('status_budget')->label('Status Budget')->disabled(),
+                        Textarea::make('catatan_budget')->label('Catatan Budget')->disabled(),
+                    ]),
+                ])
+                ->collapsible()->collapsed(),
         ];
     }
 
@@ -296,73 +331,171 @@ class PersetujuanDirekturUtama extends Page implements HasTable
                     RevisiTimelineSection::make(),
                 ]),
 
-            Action::make('approve')
-                ->label('Setujui')
-                ->color('success')
-                ->icon('heroicon-o-check-circle')
-                ->requiresConfirmation()
+            Action::make('buat_keputusan')
+                ->label('Buat Keputusan')
+                ->color('primary')
+                ->icon('heroicon-o-pencil-square')
                 ->form([
-                    Textarea::make('direktur_utama_catatan')->label('Catatan (Opsional)'),
+                    ...$this->getSummarySchema(),
+                    Section::make('Form Keputusan')->schema([
+                        Radio::make('direktur_utama_decision_type')
+                            ->label('Keputusan Anda')
+                            ->options(['Disetujui' => 'Setujui', 'Ditolak' => 'Tolak'])
+                            ->required()->live(),
+                        Textarea::make('direktur_utama_catatan')
+                            ->label('Catatan / Alasan')
+                            ->required(fn($get) => $get('direktur_utama_decision_type') === 'Ditolak')
+                            ->visible(fn($get) => !empty($get('direktur_utama_decision_type'))),
+                    ]),
                 ])
-                ->action(function (array $data, Pengajuan $record) {
-                    $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
-                    $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
-                    if ($finalVendor && $finalVendor->opsi_pembayaran === 'Bisa DP') {
-                        $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA;
-                    }
+                ->mountUsing(function (Form $form, Pengajuan $record): void {
+                    $formData = $record->toArray();
+                    $getScenarioDetails = function ($items) use ($record) {
+                        $details = [];
+                        $totalCost = 0;
+                        $nominalDp = 0;
+                        $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
+                        if ($groupedSurveys->isEmpty()) {
+                            return [
+                                'details' => [],
+                                'total' => 'Rp 0',
+                                'nominal_dp' => 'Tidak ada DP'
+                            ];
+                        }
 
-                    $catatanTambahan = "\n\n[Disetujui oleh Direktur Utama: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
-                    if (!empty($data['direktur_utama_catatan'])) {
-                        $catatanTambahan .= "\n" . $data['direktur_utama_catatan'];
-                    }
+                        $vendorTotals = [];
+                        foreach ($groupedSurveys as $namaVendor => $surveys) {
+                            $vendorTotal = 0;
+                            $allItemsCovered = true;
+                            foreach ($items as $item) {
+                                $survey = $surveys->where('id_item', $item->id_item)->first();
+                                if (!$survey) {
+                                    $allItemsCovered = false;
+                                    break;
+                                }
+                                $itemCost = $survey->harga * $item->kuantitas;
+                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)' ? ($survey->nominal_pajak ?? 0) : 0;
+                                $vendorTotal += ($itemCost + $taxCost);
+                            }
+                            if ($allItemsCovered) {
+                                $vendorTotals[$namaVendor] = $vendorTotal;
+                            }
+                        }
 
-                    $record->update([
-                        'status' => $newStatus,
-                        'direktur_utama_approved_by' => Auth::id(),
-                        'direktur_utama_approved_at' => now(),
-                        'direktur_utama_decision_type' => 'Disetujui',
-                        'direktur_utama_catatan' => $data['direktur_utama_catatan'] ?? null,
-                        'catatan_revisi' => trim(($record->catatan_revisi ?? '') . $catatanTambahan),
-                    ]);
-                    Notification::make()->title('Pengajuan disetujui')->success()->send();
+                        if (empty($vendorTotals)) {
+                            return [
+                                'details' => [],
+                                'total' => 'Rp 0',
+                                'nominal_dp' => 'Tidak ada DP'
+                            ];
+                        }
+
+                        $cheapestVendor = array_key_first($vendorTotals);
+                        $minTotal = min($vendorTotals);
+                        foreach ($vendorTotals as $vendor => $total) {
+                            if ($total === $minTotal) {
+                                $cheapestVendor = $vendor;
+                                break;
+                            }
+                        }
+
+                        $cheapestSurveys = $groupedSurveys[$cheapestVendor] ?? [];
+                        foreach ($items as $item) {
+                            $survey = $cheapestSurveys->where('id_item', $item->id_item)->first();
+                            if (!$survey) continue;
+                            $itemCost = $survey->harga * $item->kuantitas;
+                            $taxInfo = 'Tidak ada pajak';
+                            $taxCost = 0;
+                            if ($survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)') {
+                                $taxCost = $survey->nominal_pajak ?? 0;
+                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
+                            } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
+                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Included';
+                            }
+                            $details[] = [
+                                'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
+                                'tipe_survei' => $survey->tipe_survei,
+                                'harga_vendor' => 'Rp ' . number_format($itemCost, 0, ',', '.'),
+                                'pajak_info' => $taxInfo,
+                            ];
+                            $totalCost += ($itemCost + $taxCost);
+                        }
+
+                        $vendorPembayaran = $record->vendorPembayaran->where('nama_vendor', $cheapestVendor)->first();
+                        if ($vendorPembayaran && $vendorPembayaran->nominal_dp > 0) {
+                            $nominalDp = $vendorPembayaran->nominal_dp;
+                        }
+
+                        return [
+                            'details' => $details,
+                            'total' => 'Rp ' . number_format($totalCost, 0, ',', '.'),
+                            'nominal_dp' => $nominalDp > 0 ? 'Rp ' . number_format($nominalDp, 0, ',', '.') : 'Tidak ada DP'
+                        ];
+                    };
+                    $formData['estimasi_biaya'] = $getScenarioDetails($record->items);
+                    $form->fill($formData);
                 })
-                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA),
-
-            Action::make('reject')
-                ->label('Tolak')
-                ->color('danger')
-                ->icon('heroicon-o-x-circle')
-                ->requiresConfirmation()
-                ->form([
-                    Textarea::make('direktur_utama_catatan')->label('Catatan Penolakan (Wajib)')->required(),
-                ])
                 ->action(function (array $data, Pengajuan $record) {
-                    $catatanTambahan = "\n\n[Ditolak oleh Direktur Utama: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]\n" . $data['direktur_utama_catatan'];
-                    $record->update([
-                        'status' => Pengajuan::STATUS_DITOLAK_DIREKTUR_UTAMA,
-                        'direktur_utama_approved_by' => Auth::id(),
-                        'direktur_utama_approved_at' => now(),
-                        'direktur_utama_decision_type' => 'Ditolak',
-                        'direktur_utama_catatan' => $data['direktur_utama_catatan'],
-                        'catatan_revisi' => trim(($record->catatan_revisi ?? '') . $catatanTambahan),
-                    ]);
-                    Notification::make()->title('Pengajuan ditolak')->danger()->send();
+                    if ($data['direktur_utama_decision_type'] === 'Disetujui') {
+                        $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
+                        $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
+                        if ($finalVendor && $finalVendor->opsi_pembayaran === 'Bisa DP') {
+                            $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA;
+                        }
+                        $record->update([
+                            'status' => $newStatus,
+                            'direktur_utama_approved_by' => Auth::id(),
+                            'direktur_utama_approved_at' => now(),
+                            'direktur_utama_decision_type' => 'Disetujui',
+                            'direktur_utama_catatan' => $data['direktur_utama_catatan'] ?? null,
+                        ]);
+                        Notification::make()->title('Pengajuan disetujui')->success()->send();
+                    } else {
+                        $record->update([
+                            'status' => Pengajuan::STATUS_DITOLAK_DIREKTUR_UTAMA,
+                            'direktur_utama_approved_by' => Auth::id(),
+                            'direktur_utama_approved_at' => now(),
+                            'direktur_utama_decision_type' => 'Ditolak',
+                            'direktur_utama_catatan' => $data['direktur_utama_catatan'],
+                        ]);
+                        Notification::make()->title('Pengajuan ditolak')->danger()->send();
+                    }
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA),
 
             Action::make('process_revisi_decision_dir_utama')
-                ->label('Proses Keputusan (Revisi)')
+                ->label('Buat Keputusan (Revisi)')
                 ->color('warning')
-                ->icon('heroicon-o-arrow-path')
+                ->icon('heroicon-o-pencil-square')
                 ->form([
-                    Radio::make('revisi_direktur_utama_decision_type')
-                        ->label('Persetujuan Revisi')
-                        ->options(['Disetujui' => 'Setujui Revisi', 'Ditolak' => 'Tolak Revisi'])
-                        ->required(),
-                    Textarea::make('revisi_direktur_utama_catatan')
-                        ->label('Catatan Keputusan (Wajib diisi)')
-                        ->required(),
+                    ...$this->getSummarySchema(),
+                    Section::make('Form Keputusan Revisi')->schema([
+                        Radio::make('revisi_direktur_utama_decision_type')
+                            ->label('Persetujuan Revisi')
+                            ->options(['Disetujui' => 'Setujui Revisi', 'Ditolak' => 'Tolak Revisi'])
+                            ->required()->live(),
+                        Textarea::make('revisi_direktur_utama_catatan')
+                            ->label('Catatan Keputusan')
+                            ->required(fn($get) => $get('revisi_direktur_utama_decision_type') === 'Ditolak')
+                            ->visible(fn($get) => !empty($get('revisi_direktur_utama_decision_type'))),
+                    ]),
                 ])
+                ->mountUsing(function (Form $form, Pengajuan $record): void {
+                    $formData = $record->toArray();
+                    $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
+                    if ($latestRevisi) {
+                        $totalCost = $latestRevisi->harga_revisi + $latestRevisi->nominal_pajak;
+                        $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
+                        $nominalDp = $finalVendor?->nominal_dp ?? 0;
+                        $formData['estimasi_biaya'] = [
+                            'total' => 'Rp ' . number_format($totalCost, 0, ',', '.'),
+                            'nominal_dp' => $nominalDp > 0 ? 'Rp ' . number_format($nominalDp, 0, ',', '.') : 'Tidak ada DP',
+                        ];
+                        $formData['status_budget'] = $latestRevisi->revisi_budget_status_pengadaan;
+                        $formData['catatan_budget'] = $latestRevisi->revisi_budget_catatan_pengadaan;
+                    }
+                    $form->fill($formData);
+                })
                 ->action(function (array $data, Pengajuan $record) {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
                     if (!$latestRevisi) {
@@ -381,14 +514,13 @@ class PersetujuanDirekturUtama extends Page implements HasTable
                             'direktur_utama_approved_at' => now(),
                         ]);
                         Notification::make()->title('Revisi ditolak')->danger()->send();
-                        return;
+                    } else {
+                        $record->update([
+                            'status' => Pengajuan::STATUS_MENUNGGU_PELUNASAN,
+                            'direktur_utama_approved_at' => now(),
+                        ]);
+                        Notification::make()->title('Revisi berhasil disetujui')->success()->send();
                     }
-
-                    $record->update([
-                        'status' => Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-                        'direktur_utama_approved_at' => now(),
-                    ]);
-                    Notification::make()->title('Revisi berhasil disetujui')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => trim($record->status) === Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI),
         ];

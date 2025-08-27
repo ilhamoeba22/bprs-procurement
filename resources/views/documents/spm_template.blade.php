@@ -157,17 +157,34 @@
                     </tr>
                     @endforeach
                     <tr class="total-row">
-                        <td colspan="3" style="text-align:right;">TOTAL NILAI BARANG (AWAL)</td>
+                        <td colspan="3" style="text-align:right;">TOTAL NILAI BARANG</td>
                         <td><b>Rp {{ number_format($total_nilai_barang_original, 0, ',', '.') }}</b></td>
                     </tr>
-                    @if($total_pajak_original > 0)
                     <tr class="total-row">
-                        <td colspan="3" style="text-align:right;">PAJAK (AWAL)</td>
-                        <td><b>Rp {{ number_format($total_pajak_original, 0, ',', '.') }}</b></td>
+                        <td colspan="3" style="text-align:right;">
+                            @php
+                            // Membuat label pajak yang dinamis
+                            $pajakLabel = 'PAJAK';
+                            if ($tax_type_original) {
+                            $pajakLabel = $tax_type_original;
+                            }
+                            if ($tax_condition_original !== 'Tidak Ada Pajak') {
+                            $pajakLabel .= str_contains($tax_condition_original, 'Include') ? ' (Include)' : ' (Exclude)';
+                            }
+                            @endphp
+                            {{ $pajakLabel }}
+                        </td>
+                        <td>
+                            <b>
+                                Rp {{ number_format($total_pajak_original, 0, ',', '.') }}
+                                @if(str_contains($tax_condition_original, 'Include'))
+                                (-)
+                                @endif
+                            </b>
+                        </td>
                     </tr>
-                    @endif
                     <tr class="total-row" style="background-color:#e0e0e0;">
-                        <td colspan="3" style="text-align:right;"><b>TOTAL BIAYA (AWAL)</b></td>
+                        <td colspan="3" style="text-align:right;"><b>TOTAL BIAYA</b></td>
                         <td><b>Rp {{ number_format($total_biaya_original, 0, ',', '.') }}</b></td>
                     </tr>
                 </tbody>
@@ -229,7 +246,6 @@
                 </tr>
                 @endif
 
-                {{-- Logika baru untuk menampilkan detail pembayaran DP atau Lunas --}}
                 @if($payment_details['opsi_pembayaran'] == 'Bisa DP')
                 <tr>
                     <td>Pembayaran DP</td>
@@ -243,9 +259,10 @@
                     </td>
                 </tr>
                 <tr>
-                    <td>Sisa Pelunasan</td>
+                    <td>Pelunasan</td>
                     <td>
-                        <b>Rp {{ number_format($total_final - $payment_details['nominal_dp'], 0, ',', '.') }}</b>
+                        {{-- [PERBAIKAN] Menggunakan total_nilai_barang_final untuk menghitung sisa pelunasan ke vendor --}}
+                        <b>Rp {{ number_format($total_nilai_barang_final - $payment_details['nominal_dp'], 0, ',', '.') }}</b>
                         @if($payment_details['tanggal_pelunasan_aktual'])
                         <span style="color: #166534;">(Telah Lunas Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
                         @else
@@ -257,11 +274,39 @@
                 <tr>
                     <td>Pembayaran Lunas</td>
                     <td>
-                        <b>Rp {{ number_format($total_final, 0, ',', '.') }}</b>
+                        {{-- [PERBAIKAN] Menggunakan total_nilai_barang_final untuk pembayaran ke vendor --}}
+                        <b>Rp {{ number_format($total_nilai_barang_final, 0, ',', '.') }}</b>
                         @if($payment_details['tanggal_pelunasan_aktual'])
                         <span style="color: #166534;">(Telah Lunas Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
                         @else
                         <span>(Rencana Tgl. {{ $payment_details['tanggal_pelunasan'] }})</span>
+                        @endif
+                    </td>
+                </tr>
+                @endif
+
+                @if($tax_condition_final !== 'Tidak Ada Pajak')
+                <tr>
+                    <td style="width: 30%;">
+                        @php
+                        $pajakLabel = $tax_type_final ?: 'Pajak';
+                        if (str_contains($tax_condition_final, 'Include')) {
+                        $pajakLabel .= ' (Include)';
+                        } elseif (str_contains($tax_condition_final, 'Exclude')) {
+                        $pajakLabel .= ' (Exclude)';
+                        }
+                        @endphp
+                        Pajak {{ $pajakLabel }}
+                    </td>
+                    <td>
+                        <b>
+                            Rp {{ number_format($total_pajak_final, 0, ',', '.') }}
+                            (-)
+                            @if(str_contains($tax_condition_final, 'Include'))
+                            @endif
+                        </b>
+                        @if($payment_details['tanggal_pelunasan_aktual'])
+                        <span style="color: #166534;">(Telah Dibayar Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
                         @endif
                     </td>
                 </tr>
@@ -277,13 +322,28 @@
         <div class="signature-section">
             <table style="width:100%; border:none;">
                 <tr>
-                    <td style="width:50%; border:none;"></td>
-                    <td style="width:50%; border:none; text-align:center; vertical-align:top; padding-top:10px;">
+                    <td style="width:33%; border:none;"></td>
+                    <td style="width:33%; border:none;"></td>
+                    <td style="width:33%; border:none; text-align:center; vertical-align:top; padding-top:10px;">
                         Depok, {{ \Carbon\Carbon::now()->translatedFormat('d F Y') }}
                     </td>
                 </tr>
                 <tr>
-                    <td style="width:50%; text-align:center;">
+                    <td style="width:33%; text-align:center; vertical-align: top;">
+                        {{-- [PERUBAHAN] Tanda tangan Pembayar --}}
+                        @if($is_paid && $disbursedByName)
+                        <p style="margin-bottom:2px;">Dibayarkan oleh,</p>
+                        <br>
+                        @if(!empty($disbursedByQrCode))
+                        <img src="{{ $disbursedByQrCode }}" alt="QR Code Verifikasi" style="height: 80px; width: 80px;">
+                        @else
+                        <br><br><br>
+                        @endif
+                        <p style="margin-top:5px;"><b><u>{{ $disbursedByName }}</u></b></p>
+                        <p style="margin-top:0px;">Staff Accounting</p>
+                        @endif
+                    </td>
+                    <td style="width:33%; text-align:center; vertical-align: top;">
                         @if($direkturName)
                         <p style="margin-bottom:2px;">Mengetahui,</p>
                         <p style="margin-bottom:2px;">{{ $direkturJabatan }}</p>
@@ -296,7 +356,7 @@
                         <p style="margin-top:5px;"><b><u>{{ $direkturName }}</u></b></p>
                         @endif
                     </td>
-                    <td style="width:50%; text-align:center;">
+                    <td style="width:33%; text-align:center; vertical-align: top;">
                         <p style="margin-bottom:2px;">Menyetujui,</p>
                         <p style="margin-bottom:2px;">Kepala Divisi GA</p>
                         <br>

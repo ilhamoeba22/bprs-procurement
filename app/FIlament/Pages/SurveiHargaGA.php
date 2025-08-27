@@ -175,7 +175,7 @@ class SurveiHargaGA extends Page implements HasTable
                                 ->content(fn($get) => new HtmlString('<b class="text-base">' . $get('nama_barang') . '</b>' . ' <span class="text-sm text-gray-500">(' . $get('kategori_barang') . ')</span>')),
                             Grid::make(2)->schema([
                                 Select::make('tipe_survei')
-                                    ->label('Tipe Survei')
+                                    ->label('Kategori Survei')
                                     ->options([
                                         '1a. Software' => '1a. Software',
                                         '1b. Hak Paten' => '1b. Hak Paten',
@@ -186,6 +186,8 @@ class SurveiHargaGA extends Page implements HasTable
                                         '2c. Kendaraan Bermotor' => '2c. Kendaraan Bermotor',
                                         '2d. Perlengkapan Kantor Lainnya' => '2d. Perlengkapan Kantor Lainnya',
                                         '2e. Lainnya (Aktiva Berwujud)' => '2e. Lainnya (Aktiva Berwujud)',
+                                        'Jasa' => 'Jasa',
+                                        'Sewa' => 'Sewa',
                                     ])
                                     ->required()->live(),
                                 TextInput::make('harga')->label('Harga')->numeric()->required()->prefix('Rp')->live(),
@@ -832,7 +834,7 @@ class SurveiHargaGA extends Page implements HasTable
                     $catatanTambahan = "\n\n[Proses diselesaikan oleh GA: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
                     $record->update([
                         'status' => Pengajuan::STATUS_SELESAI,
-                        'catatan_revisi' => trim(($record->catatan_revisi ?? '') . $catatanTambahan),
+                        // 'catatan_revisi' => trim(($record->catatan_revisi ?? '') . $catatanTambahan),
                     ]);
 
                     Notification::make()->title('Pengajuan Telah Selesai')->body('Proses pengadaan untuk tiket ini telah berhasil ditutup.')->success()->send();

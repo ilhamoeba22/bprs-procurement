@@ -5,11 +5,17 @@ namespace App\Filament\Pages;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
+use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
+use Filament\Forms\Components\Radio;
 use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Textarea;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
 use Illuminate\Database\Eloquent\Builder;
@@ -113,14 +119,19 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
 
             BadgeColumn::make('tindakan_saya')
                 ->label('Keterangan')
-                ->state(fn(Pengajuan $record): string => match ($record->status) {
-                    Pengajuan::STATUS_SELESAI => 'Pengajuan Selesai',
-                    Pengajuan::STATUS_SUDAH_BAYAR => 'Menunggu Penyelesaian',
-                    default => $record->ga_surveyed_by === Auth::id() ? 'Sudah Disurvei' : 'Menunggu Aksi',
+                ->state(function (Pengajuan $record): string {
+                    // [PERBAIKAN] Menggunakan kondisi yang benar
+                    if ($record->kadiv_approved_by === Auth::id()) {
+                        return 'Sudah Diproses';
+                    }
+                    return match ($record->status) {
+                        Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV => 'Menunggu Aksi',
+                        default => 'Proses Lanjut',
+                    };
                 })
                 ->color(fn(string $state): string => match ($state) {
-                    'Sudah Disurvei', 'Pengajuan Selesai' => 'success',
-                    'Menunggu Penyelesaian' => 'warning',
+                    'Sudah Diproses' => 'success',
+                    'Menunggu Aksi' => 'warning',
                     default => 'gray',
                 }),
         ];
@@ -273,63 +284,77 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
                     RevisiTimelineSection::make(),
                 ]),
 
-            Action::make('approve')
-                ->label('Setujui')
-                ->color('success')
-                ->icon('heroicon-o-check-circle')
-                ->requiresConfirmation()
-                ->modalHeading('Konfirmasi Persetujuan')
-                ->modalDescription('Apakah Anda yakin ingin menyetujui pengajuan ini?')
-                ->modalSubmitActionLabel('Ya, Setujui')
-                ->form([
-                    FormsTextarea::make('catatan_approval')
-                        ->label('Catatan Persetujuan (Opsional)'),
-                ])
-                ->action(function (array $data, Pengajuan $record) {
-                    $catatan = $record->catatan_revisi ?? '';
-                    $catatan .= "\n\n[Disetujui oleh Kepala Divisi: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]";
-                    if (!empty($data['catatan_approval'])) {
-                        $catatan .= "\n" . $data['catatan_approval'];
-                    }
+            Action::make('buat_keputusan')
+                ->label('Buat Keputusan')
+                ->color('primary')
+                ->icon('heroicon-o-pencil-square')
+                ->form(function (Pengajuan $record) {
+                    return [
+                        // [PERUBAHAN] Menampilkan section detail secara manual tanpa total nilai
+                        Section::make('Detail Pengajuan')->schema([
+                            Grid::make(2)->schema([ // Grid diubah menjadi 2 kolom
+                                TextInput::make('kode_pengajuan')->disabled(),
+                                TextInput::make('status')->disabled(),
+                            ]),
+                            Repeater::make('items')->relationship()->label('Barang yang Diajukan')->schema([
+                                Grid::make(3)->schema([
+                                    TextInput::make('kategori_barang')->disabled(),
+                                    TextInput::make('nama_barang')->disabled(),
+                                    TextInput::make('kuantitas')->disabled(),
+                                ]),
+                                Grid::make(2)->schema([
+                                    Textarea::make('spesifikasi')->disabled(),
+                                    Textarea::make('justifikasi')->disabled(),
+                                ]),
+                            ])->columns(1)->disabled(),
+                        ])->collapsible()->collapsed(),
 
-                    $needsITRecommendation = $record->items()
-                        ->where('kategori_barang', 'Barang IT')
-                        ->exists();
-                    $newStatus = $needsITRecommendation ? Pengajuan::STATUS_REKOMENDASI_IT : Pengajuan::STATUS_SURVEI_GA;
-
-                    $record->update([
-                        'status' => $newStatus,
-                        'catatan_revisi' => trim($catatan),
-                        'kadiv_approved_by' => Auth::id(),
-                        'kadiv_approved_at' => now(),
-                    ]);
-                    Notification::make()->title('Pengajuan disetujui')->success()->send();
+                        Section::make('Form Keputusan')->schema([
+                            Radio::make('keputusan')
+                                ->label('Keputusan Anda')
+                                ->options(['Setuju' => 'Setujui Pengajuan', 'Tolak' => 'Tolak Pengajuan'])
+                                ->required()->live()->inline(),
+                            Textarea::make('catatan_revisi')
+                                ->label('Catatan / Alasan')
+                                ->required(fn($get) => $get('keputusan') === 'Tolak')
+                                ->visible(fn($get) => !empty($get('keputusan'))),
+                        ]),
+                    ];
                 })
-                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV),
-
-            Action::make('reject')
-                ->label('Tolak')
-                ->color('danger')
-                ->icon('heroicon-o-x-circle')
-                ->requiresConfirmation()
-                ->modalHeading('Konfirmasi Penolakan')
-                ->modalDescription('Apakah Anda yakin ingin menolak pengajuan ini?')
-                ->modalSubmitActionLabel('Ya, Tolak')
-                ->form([
-                    FormsTextarea::make('catatan_revisi')
-                        ->label('Alasan Penolakan')
-                        ->required(),
-                ])
+                ->mountUsing(function (Form $form, Pengajuan $record): void {
+                    $form->fill($record->toArray());
+                })
                 ->action(function (array $data, Pengajuan $record) {
-                    $catatan = $record->catatan_revisi ?? '';
-                    $catatan .= "\n\n[Ditolak oleh Kepala Divisi: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y H:i') . "]\n" . $data['catatan_revisi'];
-                    $record->update([
-                        'status' => Pengajuan::STATUS_DITOLAK_KADIV,
-                        'catatan_revisi' => trim($catatan),
-                        'kadiv_approved_by' => Auth::id(),
-                        'kadiv_approved_at' => now(),
-                    ]);
-                    Notification::make()->title('Pengajuan ditolak')->danger()->send();
+                    if ($data['keputusan'] === 'Setuju') {
+                        $catatan = $record->catatan_revisi ?? '';
+                        $catatan .= "\n\n[Disetujui oleh Kepala Divisi: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y') . "]";
+                        if (!empty($data['catatan_revisi'])) {
+                            $catatan .= "\n" . $data['catatan_revisi'];
+                        }
+
+                        $needsITRecommendation = $record->items()
+                            ->where('kategori_barang', 'Barang IT')
+                            ->exists();
+                        $newStatus = $needsITRecommendation ? Pengajuan::STATUS_REKOMENDASI_IT : Pengajuan::STATUS_SURVEI_GA;
+
+                        $record->update([
+                            'status' => $newStatus,
+                            'catatan_revisi' => trim($catatan),
+                            'kadiv_approved_by' => Auth::id(),
+                            'kadiv_approved_at' => now(),
+                        ]);
+                        Notification::make()->title('Pengajuan disetujui')->success()->send();
+                    } elseif ($data['keputusan'] === 'Tolak') {
+                        $catatan = $record->catatan_revisi ?? '';
+                        $catatan .= "\n\n[Ditolak oleh Kepala Divisi: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y') . "]\n" . $data['catatan_revisi'];
+                        $record->update([
+                            'status' => Pengajuan::STATUS_DITOLAK_KADIV,
+                            'catatan_revisi' => trim($catatan),
+                            'kadiv_approved_by' => Auth::id(),
+                            'kadiv_approved_at' => now(),
+                        ]);
+                        Notification::make()->title('Pengajuan ditolak')->danger()->send();
+                    }
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV),
         ];
