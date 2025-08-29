@@ -100,6 +100,67 @@ class RiwayatPengajuanWidget extends BaseWidget
                             'disbursedBy.jabatan'
                         ]);
 
+                        // [LOGIKA DISAMAKAN DENGAN SPM]
+                        $finalVendor = $record->vendorPembayaran()->where('is_final', true)->first();
+
+                        $itemsOriginal = [];
+                        $totalNilaiBarangOriginal = 0;
+                        $totalPajakOriginal = 0;
+                        $taxConditionOriginal = 'Tidak Ada Pajak';
+                        $taxTypeOriginal = null;
+
+                        foreach ($record->items as $item) {
+                            $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
+                            $hargaSatuan = $survey->harga ?? 0;
+                            $subtotal = $hargaSatuan * $item->kuantitas;
+                            $itemsOriginal[] = ['barang' => $item->nama_barang, 'kuantitas' => $item->kuantitas, 'harga' => $hargaSatuan, 'subtotal' => $subtotal];
+                            $totalNilaiBarangOriginal += $subtotal;
+                            if ($survey) {
+                                $isTaxExclude = in_array($survey->kondisi_pajak, ['Pajak ditanggung Perusahaan (Exclude)', 'Pajak ditanggung kita', 'Pajak ditanggung BPRS']);
+                                if ($isTaxExclude) {
+                                    $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                    $taxConditionOriginal = 'Pajak ditanggung Perusahaan (Exclude)';
+                                    if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
+                                } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
+                                    $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                    $taxConditionOriginal = 'Pajak ditanggung Vendor (Include)';
+                                    if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
+                                }
+                            }
+                        }
+
+                        $totalBiayaOriginal = $totalNilaiBarangOriginal;
+                        if ($taxConditionOriginal === 'Pajak ditanggung Perusahaan (Exclude)') {
+                            $totalBiayaOriginal += $totalPajakOriginal;
+                        }
+
+                        $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
+                        $isRevisi = !is_null($latestRevisi);
+                        $revisionDetails = null;
+                        $taxTypeFinal = $taxTypeOriginal;
+                        $taxConditionFinal = $taxConditionOriginal;
+
+                        if ($isRevisi) {
+                            $totalNilaiBarangFinal = $latestRevisi->harga_revisi;
+                            $totalPajakFinal = $latestRevisi->nominal_pajak;
+                            $totalFinal = $totalNilaiBarangFinal + $totalPajakFinal;
+                            $taxTypeFinal = $latestRevisi->jenis_pajak;
+                            $taxConditionFinal = $latestRevisi->kondisi_pajak;
+                            $revisionDetails = ['selisih_total' => $totalFinal - $totalBiayaOriginal, 'alasan_revisi' => $latestRevisi->alasan_revisi, 'tanggal_revisi' => Carbon::parse($latestRevisi->tanggal_revisi)->translatedFormat('d F Y')];
+                        } else {
+                            $totalNilaiBarangFinal = $totalNilaiBarangOriginal;
+                            $totalPajakFinal = $totalPajakOriginal;
+                            $totalFinal = $totalBiayaOriginal;
+                        }
+
+                        $atasan = $record->approverKadiv ?? $record->approverManager;
+                        $direksi = $record->approverDirUtama ?? $record->approverDirOps;
+                        $is_paid = $finalVendor ? !empty($finalVendor->bukti_pelunasan) : false;
+                        $payment_details = null;
+                        if ($finalVendor) {
+                            $payment_details = ['vendor' => $finalVendor->nama_vendor, 'metode_pembayaran' => $finalVendor->metode_pembayaran, 'opsi_pembayaran' => $finalVendor->opsi_pembayaran, 'nama_bank' => $finalVendor->nama_bank, 'no_rekening' => $finalVendor->no_rekening, 'nama_rekening' => $finalVendor->nama_rekening, 'nominal_dp' => $finalVendor->nominal_dp, 'tanggal_dp' => $finalVendor->tanggal_dp ? \Carbon\Carbon::parse($finalVendor->tanggal_dp)->translatedFormat('d F Y') : '-', 'tanggal_dp_aktual' => $finalVendor->tanggal_dp_aktual ? \Carbon\Carbon::parse($finalVendor->tanggal_dp_aktual)->translatedFormat('d F Y') : null, 'tanggal_pelunasan' => $finalVendor->tanggal_pelunasan ? \Carbon\Carbon::parse($finalVendor->tanggal_pelunasan)->translatedFormat('d F Y') : '-', 'tanggal_pelunasan_aktual' => $finalVendor->tanggal_pelunasan_aktual ? \Carbon\Carbon::parse($finalVendor->tanggal_pelunasan_aktual)->translatedFormat('d F Y') : null];
+                        }
+
                         $generateQrCode = function ($user) use ($record) {
                             if (!$user) return null;
                             $url = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $user]);
@@ -107,110 +168,28 @@ class RiwayatPengajuanWidget extends BaseWidget
                             return 'data:image/png;base64,' . base64_encode($qrCodeData);
                         };
 
-                        $atasan = $record->approverKadiv ?? $record->approverManager;
-                        $direksi = $record->approverDirUtama ?? $record->approverDirOps;
-                        $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->first();
-                        $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
-
-                        $estimasiBiaya = null;
-                        if ($finalVendor) {
-                            $itemsOriginalDetails = [];
-                            $totalNilaiBarangOriginal = 0;
-                            $totalPajakOriginal = 0;
-                            $taxDescriptionOriginal = 'Tidak Ada Pajak';
-
-                            foreach ($record->items as $item) {
-                                $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
-                                if (!$survey) continue;
-
-                                $hargaSatuan = $survey->harga ?? 0;
-                                $subtotal = $hargaSatuan * $item->kuantitas;
-                                $itemsOriginalDetails[] = [
-                                    'nama_barang' => $item->nama_barang,
-                                    'kuantitas' => $item->kuantitas,
-                                    'harga_satuan' => $hargaSatuan,
-                                    'total_item' => $subtotal,
-                                ];
-                                $totalNilaiBarangOriginal += $subtotal;
-
-                                // [PERBAIKAN] Cek dua kemungkinan kondisi pajak
-                                $isTaxExclude = in_array($survey->kondisi_pajak, ['Pajak ditanggung Perusahaan (Exclude)', 'Pajak ditanggung BPRS']);
-
-                                if ($isTaxExclude) {
-                                    $totalPajakOriginal += $survey->nominal_pajak ?? 0;
-                                    $taxDescriptionOriginal = ($survey->jenis_pajak ?? 'Pajak') . ' (Exclude)';
-                                } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
-                                    $taxDescriptionOriginal = 'Pajak ditanggung Vendor (Include)';
-                                    $totalPajakOriginal += $survey->nominal_pajak ?? 0;
-                                }
-                            }
-
-                            $totalNilaiBarangFinal = $totalNilaiBarangOriginal;
-                            $totalPajakFinal = $totalPajakOriginal;
-                            $taxDescriptionFinal = $taxDescriptionOriginal;
-
-                            if ($latestRevisi) {
-                                $totalNilaiBarangFinal = $latestRevisi->harga_revisi;
-                                $totalPajakFinal = $latestRevisi->nominal_pajak;
-                                $taxDescriptionFinal = $latestRevisi->jenis_pajak ?? 'Pajak (Revisi)';
-                                if ($totalPajakFinal == 0) $taxDescriptionFinal = 'Tidak Ada Pajak';
-                            }
-
-                            $totalBiayaFinal = $totalNilaiBarangFinal;
-                            if (strpos($taxDescriptionFinal, 'Include') === false) {
-                                $totalBiayaFinal += $totalPajakFinal;
-                            }
-
-                            $estimasiBiaya = [
-                                'details' => $itemsOriginalDetails,
-                                'subtotal' => $totalNilaiBarangFinal,
-                                'pajak_info_text' => $taxDescriptionFinal,
-                                'pajak_info_nominal' => $totalPajakFinal,
-                                'total_biaya' => $totalBiayaFinal,
-                            ];
-                        }
-
-                        // [LOGIKA BARU] Menyiapkan data untuk Rincian Pembayaran Final
-                        $total_final = $estimasiBiaya['total_biaya'] ?? 0;
-                        $is_paid = $finalVendor ? !empty($finalVendor->bukti_pelunasan) : false;
-                        $payment_details = null;
-                        if ($finalVendor) {
-                            $payment_details = [
-                                'vendor' => $finalVendor->nama_vendor,
-                                'metode_pembayaran' => $finalVendor->metode_pembayaran,
-                                'opsi_pembayaran' => $finalVendor->opsi_pembayaran,
-                                'nama_bank' => $finalVendor->nama_bank,
-                                'no_rekening' => $finalVendor->no_rekening,
-                                'nama_rekening' => $finalVendor->nama_rekening,
-                                'nominal_dp' => $finalVendor->nominal_dp,
-                                'tanggal_dp' => $finalVendor->tanggal_dp ? \Carbon\Carbon::parse($finalVendor->tanggal_dp)->translatedFormat('d F Y') : '-',
-                                'tanggal_dp_aktual' => $finalVendor->tanggal_dp_aktual ? \Carbon\Carbon::parse($finalVendor->tanggal_dp_aktual)->translatedFormat('d F Y') : null,
-                                'tanggal_pelunasan' => $finalVendor->tanggal_pelunasan ? \Carbon\Carbon::parse($finalVendor->tanggal_pelunasan)->translatedFormat('d F Y') : '-',
-                                'tanggal_pelunasan_aktual' => $finalVendor->tanggal_pelunasan_aktual ? \Carbon\Carbon::parse($finalVendor->tanggal_pelunasan_aktual)->translatedFormat('d F Y') : null,
-                            ];
-                        }
-
                         $data = [
                             'pengajuan' => $record,
                             'atasan' => $atasan,
                             'direksi' => $direksi,
                             'latestRevisi' => $latestRevisi,
                             'finalVendor' => $finalVendor,
-                            'estimasiBiaya' => $estimasiBiaya,
+                            'items_original' => $itemsOriginal,
+                            'total_nilai_barang_original' => $totalNilaiBarangOriginal,
+                            'total_pajak_original' => $totalPajakOriginal,
+                            'tax_condition_original' => $taxConditionOriginal,
+                            'tax_type_original' => $taxTypeOriginal,
+                            'total_biaya_original' => $totalBiayaOriginal,
+                            'total_nilai_barang_final' => $totalNilaiBarangFinal,
+                            'total_pajak_final' => $totalPajakFinal,
+                            'tax_condition_final' => $taxConditionFinal,
+                            'tax_type_final' => $taxTypeFinal,
+                            'total_final' => $totalFinal,
+                            'is_revisi' => $isRevisi,
+                            'revision_details' => $revisionDetails,
                             'payment_details' => $payment_details,
-                            'total_final' => $total_final,
                             'is_paid' => $is_paid,
-                            'qrCodes' => [
-                                'pemohon' => $generateQrCode($record->pemohon),
-                                'atasan' => $generateQrCode($atasan),
-                                'it' => $generateQrCode($record->recommenderIt),
-                                'ga_surveyor' => $generateQrCode($record->surveyorGa),
-                                'budget_approver' => $generateQrCode($record->approverBudget),
-                                'budget_validator' => $generateQrCode($record->validatorBudgetOps),
-                                'pembayar' => $generateQrCode($record->disbursedBy),
-                                'kadiv_ga' => $generateQrCode($record->approverKadivGa),
-                                'direksi' => $generateQrCode($direksi),
-                            ],
+                            'qrCodes' => ['pemohon' => $generateQrCode($record->pemohon), 'atasan' => $generateQrCode($atasan), 'it' => $generateQrCode($record->recommenderIt), 'ga_surveyor' => $generateQrCode($record->surveyorGa), 'budget_approver' => $generateQrCode($record->approverBudget), 'budget_validator' => $generateQrCode($record->validatorBudgetOps), 'pembayar' => $generateQrCode($record->disbursedBy), 'kadiv_ga' => $generateQrCode($record->approverKadivGa), 'direksi' => $generateQrCode($direksi)],
                         ];
 
                         $pdf = Pdf::loadView('documents.laporan-akhir', $data)->setPaper('a4', 'portrait');

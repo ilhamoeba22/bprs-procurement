@@ -325,35 +325,42 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
                     $form->fill($record->toArray());
                 })
                 ->action(function (array $data, Pengajuan $record) {
-                    if ($data['keputusan'] === 'Setuju') {
+                    $user = Auth::user();
+                    $jabatan = $user->jabatan->nama_jabatan ?? 'Kepala Divisi';
+
+                    if (empty($data['catatan_revisi']) && $data['keputusan'] === 'Tolak') {
+                        Notification::make()->title('Gagal')->body('Catatan atau alasan wajib diisi saat menolak.')->danger()->send();
+                        return;
+                    }
+
+                    if (!empty($data['catatan_revisi']) || $data['keputusan'] === 'Setuju') {
                         $catatan = $record->catatan_revisi ?? '';
-                        $catatan .= "\n\n[Disetujui oleh Kepala Divisi: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y') . "]";
-                        if (!empty($data['catatan_revisi'])) {
-                            $catatan .= "\n" . $data['catatan_revisi'];
+                        $catatanBaru = $data['catatan_revisi'] ?? 'Disetujui';
+
+                        $catatan .= "\n\n" . $catatanBaru . " (" . $jabatan . ")";
+
+                        if ($data['keputusan'] === 'Setuju') {
+                            $needsITRecommendation = $record->items()
+                                ->where('kategori_barang', 'Barang IT')
+                                ->exists();
+                            $newStatus = $needsITRecommendation ? Pengajuan::STATUS_REKOMENDASI_IT : Pengajuan::STATUS_SURVEI_GA;
+
+                            $record->update([
+                                'status' => $newStatus,
+                                'catatan_revisi' => trim($catatan),
+                                'kadiv_approved_by' => $user->id_user,
+                                'kadiv_approved_at' => now(),
+                            ]);
+                            Notification::make()->title('Pengajuan disetujui')->success()->send();
+                        } elseif ($data['keputusan'] === 'Tolak') {
+                            $record->update([
+                                'status' => Pengajuan::STATUS_DITOLAK_KADIV,
+                                'catatan_revisi' => trim($catatan),
+                                'kadiv_approved_by' => $user->id_user,
+                                'kadiv_approved_at' => now(),
+                            ]);
+                            Notification::make()->title('Pengajuan ditolak')->danger()->send();
                         }
-
-                        $needsITRecommendation = $record->items()
-                            ->where('kategori_barang', 'Barang IT')
-                            ->exists();
-                        $newStatus = $needsITRecommendation ? Pengajuan::STATUS_REKOMENDASI_IT : Pengajuan::STATUS_SURVEI_GA;
-
-                        $record->update([
-                            'status' => $newStatus,
-                            'catatan_revisi' => trim($catatan),
-                            'kadiv_approved_by' => Auth::id(),
-                            'kadiv_approved_at' => now(),
-                        ]);
-                        Notification::make()->title('Pengajuan disetujui')->success()->send();
-                    } elseif ($data['keputusan'] === 'Tolak') {
-                        $catatan = $record->catatan_revisi ?? '';
-                        $catatan .= "\n\n[Ditolak oleh Kepala Divisi: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y') . "]\n" . $data['catatan_revisi'];
-                        $record->update([
-                            'status' => Pengajuan::STATUS_DITOLAK_KADIV,
-                            'catatan_revisi' => trim($catatan),
-                            'kadiv_approved_by' => Auth::id(),
-                            'kadiv_approved_at' => now(),
-                        ]);
-                        Notification::make()->title('Pengajuan ditolak')->danger()->send();
                     }
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV),

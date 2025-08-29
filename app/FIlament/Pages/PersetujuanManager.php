@@ -320,31 +320,37 @@ class PersetujuanManager extends Page implements HasTable
                     $form->fill($record->toArray());
                 })
                 ->action(function (array $data, Pengajuan $record) {
-                    if ($data['keputusan'] === 'Setuju') {
+                    $user = Auth::user();
+                    $jabatan = $user->jabatan->nama_jabatan ?? 'Manager'; // Mengambil nama jabatan user
+
+                    if (empty($data['catatan_revisi']) && $data['keputusan'] === 'Tolak') {
+                        Notification::make()->title('Gagal')->body('Catatan atau alasan wajib diisi saat menolak.')->danger()->send();
+                        return;
+                    }
+
+                    if (!empty($data['catatan_revisi']) || $data['keputusan'] === 'Setuju') {
                         $catatan = $record->catatan_revisi ?? '';
-                        $catatan .= "\n\n[Disetujui oleh Manager: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y') . "]";
-                        if (!empty($data['catatan_revisi'])) {
-                            $catatan .= "\n" . $data['catatan_revisi'];
+                        $catatanBaru = $data['catatan_revisi'] ?? 'Disetujui';
+
+                        $catatan .= "\n\n" . $catatanBaru . " (" . $jabatan . ")";
+
+                        if ($data['keputusan'] === 'Setuju') {
+                            $record->update([
+                                'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV,
+                                'catatan_revisi' => trim($catatan),
+                                'manager_approved_by' => $user->id_user,
+                                'manager_approved_at' => now(),
+                            ]);
+                            Notification::make()->title('Pengajuan disetujui')->success()->send();
+                        } elseif ($data['keputusan'] === 'Tolak') {
+                            $record->update([
+                                'status' => Pengajuan::STATUS_DITOLAK_MANAGER,
+                                'catatan_revisi' => trim($catatan),
+                                'manager_approved_by' => $user->id_user,
+                                'manager_approved_at' => now(),
+                            ]);
+                            Notification::make()->title('Pengajuan ditolak')->danger()->send();
                         }
-
-                        $record->update([
-                            'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV,
-                            'catatan_revisi' => trim($catatan),
-                            'manager_approved_by' => Auth::id(),
-                            'manager_approved_at' => now(),
-                        ]);
-                        Notification::make()->title('Pengajuan disetujui')->success()->send();
-                    } elseif ($data['keputusan'] === 'Tolak') {
-                        $catatan = $record->catatan_revisi ?? '';
-                        $catatan .= "\n\n[Ditolak oleh Manager: " . Auth::user()->nama_user . " pada " . now()->format('d-m-Y') . "]\n" . $data['catatan_revisi'];
-
-                        $record->update([
-                            'status' => Pengajuan::STATUS_DITOLAK_MANAGER,
-                            'catatan_revisi' => trim($catatan),
-                            'manager_approved_by' => Auth::id(),
-                            'manager_approved_at' => now(),
-                        ]);
-                        Notification::make()->title('Pengajuan ditolak')->danger()->send();
                     }
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER),

@@ -63,6 +63,11 @@
             border-bottom: 1px dotted #ccc;
         }
 
+        .details-table .label {
+            font-weight: bold;
+            width: 25%;
+        }
+
         .details-table-4col td {
             width: 25%;
         }
@@ -129,19 +134,27 @@
             border-bottom-color: #fde68a;
         }
 
-        /* [PERUBAHAN] CSS untuk Stempel LUNAS */
+        /* [PERUBAHAN] CSS untuk Stempel LUNAS di Laporan Akhir */
+        .payment-section-container {
+            position: relative;
+            /* Kunci agar stempel bisa mengambang */
+        }
+
         .paid-stamp {
-            font-size: 20px;
+            position: absolute;
+            right: 20px;
+            top: 70px;
+            transform: rotate(-10deg);
+            font-size: 24px;
             font-weight: bold;
-            color: #208a39;
-            border: 3px solid #208a39;
-            background-color: rgba(140, 253, 117, 0.67);
-            padding: 15px 8px;
-            border-radius: 6px;
+            color: #28a745;
+            border: 3px solid #28a745;
+            padding: 5px 10px;
+            border-radius: 5px;
             text-align: center;
+            background-color: #fff;
+            opacity: 0.9;
             line-height: 1.2;
-            transform: rotate(-15deg);
-            margin-top: 15px;
         }
 
         .paid-stamp .date {
@@ -150,27 +163,38 @@
             display: block;
         }
 
-        /* [PERBAIKAN FINAL] CSS untuk Riwayat Persetujuan */
+        /* [PERUBAHAN FINAL] CSS untuk Riwayat Persetujuan */
         .signature-grid {
-            text-align: center;
-            margin-top: 10px;
+            text-align: justify;
+            /* Membuat rata kanan-kiri */
+            font-size: 0.1px;
+            /* Trik untuk spasi antar inline-block */
+            margin-top: 5px;
+        }
+
+        .signature-grid:after {
+            content: '';
+            display: inline-block;
+            width: 100%;
         }
 
         .signature-section-content {
-            padding: 5px;
+            padding: 5px 8px;
             /* Padding section diperkecil */
         }
 
         .signature-box {
             display: inline-block;
             vertical-align: top;
-            width: 18%;
+            width: 24%;
+            /* Lebar untuk 4 kolom dengan sedikit spasi */
             padding: 5px;
             text-align: center;
-            height: 155px;
+            height: 160px;
             /* Tinggi disesuaikan */
-            font-size: 9px;
-            margin: 0 0.5%;
+            font-size: 10px;
+            /* Ukuran font direset */
+            margin: 5px 0;
         }
 
         .signature-box p {
@@ -179,7 +203,7 @@
 
         .signature-title {
             font-weight: bold;
-            font-size: 10px;
+            font-size: 11px;
             margin-bottom: 4px;
         }
 
@@ -190,9 +214,9 @@
         }
 
         .signature-qr {
-            height: 70px;
+            height: 80px;
             /* QR Code diperbesar */
-            width: 70px;
+            width: 80px;
             /* QR Code diperbesar */
             margin: 4px auto 0 auto;
         }
@@ -209,11 +233,15 @@
 
 <body>
     <div class="container">
-        <div class="header" style="position: relative;">
+        <div class="header">
             <img src="{{ public_path('images/logo_mci.png') }}" alt="Logo Kiri" style="position: absolute; left: 0; top: 0; height: 45px;">
-            <!-- <img src="{{ public_path('images/ib_logo.png') }}" alt="Logo Kanan" style="position: absolute; right: 0; top: 0; height: 30px;"> -->
             <h4>LAPORAN AKHIR PENGADAAN BARANG, JASA, DAN SEWA</h4>
-            <p>Nomor: {{ $pengajuan->kode_pengajuan }}</p>
+            <p class="nomor-pengajuan">Nomor: {{ $pengajuan->kode_pengajuan }}</p>
+            <!-- @if($pengajuan->status === \App\Models\Pengajuan::STATUS_SELESAI)
+            <div class="tanggal-penyelesaian">
+                <b>Tanggal Penyelesaian:</b><br>{{ $pengajuan->updated_at->translatedFormat('d F Y') }}
+            </div>
+            @endif -->
         </div>
 
         <div class="section">
@@ -333,45 +361,56 @@
             </div>
         </div>
 
-        @if($estimasiBiaya)
         <div class="section">
-            <div class="section-header">Rincian Estimasi Biaya (Vendor Terpilih: {{ $finalVendor->nama_vendor }})</div>
+            <div class="section-header">Detail Harga Awal (Vendor Terpilih: {{ $finalVendor->nama_vendor }})</div>
             <div class="section-content">
                 <table class="item-table">
                     <thead>
                         <tr>
-                            <th>Item/Barang</th>
-                            <th style="width:10%; text-align:center;">Kuantitas</th>
-                            <th style="width:20%;">Harga Satuan</th>
-                            <th style="width:20%;">Total</th>
+                            <th>Barang</th>
+                            <th style="width:8%; text-align:center;">Qty</th>
+                            <th style="width:17%;">Harga Satuan</th>
+                            <th style="width:20%;">Subtotal</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($estimasiBiaya['details'] as $detail)
+                        @foreach($items_original as $item)
                         <tr>
-                            <td>{{ $detail['nama_barang'] }}</td>
-                            <td style="text-align: center;">{{ $detail['kuantitas'] }}</td>
-                            <td>Rp {{ number_format($detail['harga_satuan'], 0, ',', '.') }}</td>
-                            <td>Rp {{ number_format($detail['total_item'], 0, ',', '.') }}</td>
+                            <td><b>{{ $item['barang'] }}</b></td>
+                            <td style="text-align: center;">{{ $item['kuantitas'] }}</td>
+                            <td>Rp {{ number_format($item['harga'], 0, ',', '.') }}</td>
+                            <td>Rp {{ number_format($item['subtotal'], 0, ',', '.') }}</td>
                         </tr>
                         @endforeach
                         <tr class="summary-row">
-                            <td colspan="3" style="text-align:right;">SUBTOTAL</td>
-                            <td>Rp {{ number_format($estimasiBiaya['subtotal'], 0, ',', '.') }}</td>
+                            <td colspan="3" style="text-align:right;">TOTAL NILAI BARANG</td>
+                            <td>Rp {{ number_format($total_nilai_barang_original, 0, ',', '.') }}</td>
                         </tr>
                         <tr class="summary-row">
-                            <td colspan="3" style="text-align:right;">Pajak ({{ $estimasiBiaya['pajak_info_text'] }})</td>
-                            <td>Rp {{ number_format($estimasiBiaya['pajak_info_nominal'], 0, ',', '.') }}</td>
+                            <td colspan="3" style="text-align:right;">
+                                @php
+                                $pajakLabel = 'PAJAK';
+                                if ($tax_type_original) { $pajakLabel = $tax_type_original; }
+                                if ($tax_condition_original !== 'Tidak Ada Pajak') {
+                                $pajakLabel .= str_contains($tax_condition_original, 'Include') ? ' (Include)' : ' (Exclude)';
+                                }
+                                @endphp
+                                {{ $pajakLabel }}
+                            </td>
+                            <td>
+                                <b>Rp {{ number_format($total_pajak_original, 0, ',', '.') }}
+                                    @if(str_contains($tax_condition_original, 'Include')) (-) @endif
+                                </b>
+                            </td>
                         </tr>
                         <tr class="summary-row" style="font-size: 14px;">
                             <td colspan="3" style="text-align:right;">TOTAL BIAYA</td>
-                            <td>Rp {{ number_format($estimasiBiaya['total_biaya'], 0, ',', '.') }}</td>
+                            <td>Rp {{ number_format($total_biaya_original, 0, ',', '.') }}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
-        @endif
 
         @if($latestRevisi)
         <div class="section revision-section">
@@ -401,226 +440,232 @@
         </div>
         @endif
 
+        {{-- [PERUBAHAN] Section ini sekarang sama persis seperti di SPM --}}
         @if($payment_details)
-        <div class="section">
-            <div class="section-header">Rincian Pembayaran Final</div>
-            <div class="section-content">
-                <table style="width: 100%; border: none; border-collapse: collapse;">
-                    <tr style="vertical-align: top;">
-                        <td style="width: 70%; padding-right: 20px;">
-                            <table class="details-table" style="margin:0;">
-                                <tr style="background-color:#e0e0e0;">
-                                    <td style="width: 30%; font-weight: bold;">TOTAL PERINTAH BAYAR (FINAL)</td>
-                                    <td><b>Rp {{ number_format($total_final, 0, ',', '.') }}</b></td>
-                                </tr>
-                                <tr>
-                                    <td style="width: 30%;">Metode Pembayaran</td>
-                                    <td><b>{{ $payment_details['metode_pembayaran'] }}</b></td>
-                                </tr>
-                                @if(strtolower(trim($payment_details['metode_pembayaran'])) == 'transfer')
-                                <tr>
-                                    <td style="width: 30%;">Rekening Tujuan</td>
-                                    <td><b>{{ $payment_details['nama_bank'] }}</b> - {{ $payment_details['no_rekening'] }} (a.n. {{ $payment_details['nama_rekening'] }})</td>
-                                </tr>
+        <div class="payment-section-container">
+            @if($is_paid)
+            <div class="paid-stamp">
+                LUNAS
+                <span class="date">{{ $payment_details['tanggal_pelunasan_aktual'] }}</span>
+            </div>
+            @endif
+            <div class="section">
+                <div class="section-header">Rincian Pembayaran Final</div>
+                <div class="section-content">
+                    <table class="details-table" style="margin:0;">
+                        <tr style="background-color:#e0e0e0;">
+                            <td style="width: 30%; font-weight: bold;">TOTAL PERINTAH BAYAR (FINAL)</td>
+                            <td><b>Rp {{ number_format($total_final, 0, ',', '.') }}</b></td>
+                        </tr>
+                        <tr>
+                            <td style="width: 30%;">Metode Pembayaran</td>
+                            <td><b>{{ $payment_details['metode_pembayaran'] }}</b></td>
+                        </tr>
+                        @if(strtolower(trim($payment_details['metode_pembayaran'])) == 'transfer')
+                        <tr>
+                            <td style="width: 30%;">Rekening Tujuan</td>
+                            <td><b>{{ $payment_details['nama_bank'] }}</b> - {{ $payment_details['no_rekening'] }} (a.n. {{ $payment_details['nama_rekening'] }})</td>
+                        </tr>
+                        @endif
+
+                        @if($payment_details['opsi_pembayaran'] == 'Bisa DP')
+                        <tr>
+                            <td>Pembayaran DP</td>
+                            <td>
+                                <b>Rp {{ number_format($payment_details['nominal_dp'], 0, ',', '.') }}</b>
+                                @if($payment_details['tanggal_dp_aktual']) <span style="color: #166534;">(Telah Dibayar Tgl. {{ $payment_details['tanggal_dp_aktual'] }})</span>
+                                @else <span>(Rencana Tgl. {{ $payment_details['tanggal_dp'] }})</span> @endif
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Sisa Pelunasan</td>
+                            <td>
+                                <b>Rp {{ number_format($total_nilai_barang_final - $payment_details['nominal_dp'], 0, ',', '.') }}</b>
+                                @if($payment_details['tanggal_pelunasan_aktual']) <span style="color: #166534;">(Telah Lunas Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
+                                @else <span>(Rencana Tgl. {{ $payment_details['tanggal_pelunasan'] }})</span> @endif
+                            </td>
+                        </tr>
+                        @elseif($payment_details['opsi_pembayaran'] == 'Langsung Lunas')
+                        <tr>
+                            <td>Pembayaran Lunas</td>
+                            <td>
+                                <b>Rp {{ number_format($total_nilai_barang_final, 0, ',', '.') }}</b>
+                                @if($payment_details['tanggal_pelunasan_aktual']) <span style="color: #166534;">(Telah Lunas Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
+                                @else <span>(Rencana Tgl. {{ $payment_details['tanggal_pelunasan'] }})</span> @endif
+                            </td>
+                        </tr>
+                        @endif
+
+                        @if($tax_condition_final !== 'Tidak Ada Pajak')
+                        <tr>
+                            <td style="width: 30%;">
+                                @php
+                                $pajakLabel = $tax_type_final ?: 'Pajak';
+                                if (str_contains($tax_condition_final, 'Include')) { $pajakLabel .= ' (Include)'; }
+                                elseif (str_contains($tax_condition_final, 'Exclude')) { $pajakLabel .= ' (Exclude)'; }
+                                @endphp
+                                {{ $pajakLabel }}
+                            </td>
+                            <td>
+                                <b>Rp {{ number_format($total_pajak_final, 0, ',', '.') }}
+                                    @if(str_contains($tax_condition_final, 'Include')) (-) @endif
+                                </b>
+                                @if($payment_details['tanggal_pelunasan_aktual'])
+                                <span style="color: #166534;">(Telah Dibayar Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
                                 @endif
-                                @if($payment_details['opsi_pembayaran'] == 'Bisa DP')
-                                <tr>
-                                    <td>Pembayaran DP</td>
-                                    <td>
-                                        <b>Rp {{ number_format($payment_details['nominal_dp'], 0, ',', '.') }}</b>
-                                        @if($payment_details['tanggal_dp_aktual'])
-                                        <span style="color: #166534;">(Telah Dibayar Tgl. {{ $payment_details['tanggal_dp_aktual'] }})</span>
-                                        @else
-                                        <span>(Rencana Tgl. {{ $payment_details['tanggal_dp'] }})</span>
-                                        @endif
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>Sisa Pelunasan</td>
-                                    <td>
-                                        <b>Rp {{ number_format($total_final - $payment_details['nominal_dp'], 0, ',', '.') }}</b>
-                                        @if($payment_details['tanggal_pelunasan_aktual'])
-                                        <span style="color: #166534;">(Telah Lunas Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
-                                        @else
-                                        <span>(Rencana Tgl. {{ $payment_details['tanggal_pelunasan'] }})</span>
-                                        @endif
-                                    </td>
-                                </tr>
-                                @elseif($payment_details['opsi_pembayaran'] == 'Langsung Lunas')
-                                <tr>
-                                    <td>Pembayaran Lunas</td>
-                                    <td>
-                                        <b>Rp {{ number_format($total_final, 0, ',', '.') }}</b>
-                                        @if($payment_details['tanggal_pelunasan_aktual'])
-                                        <span style="color: #166534;">(Telah Lunas Tgl. {{ $payment_details['tanggal_pelunasan_aktual'] }})</span>
-                                        @else
-                                        <span>(Rencana Tgl. {{ $payment_details['tanggal_pelunasan'] }})</span>
-                                        @endif
-                                    </td>
-                                </tr>
-                                @endif
-                            </table>
-                        </td>
-                        <td style="width: 30%;">
-                            @if($is_paid)
-                            <div class="paid-stamp">
-                                LUNAS
-                                <span class="date">{{ $payment_details['tanggal_pelunasan_aktual'] }}</span>
-                            </div>
-                            @endif
-                        </td>
-                    </tr>
-                </table>
+                            </td>
+                        </tr>
+                        @endif
+                    </table>
+                </div>
             </div>
         </div>
         @endif
 
-        <div class="section">
-            <div class="section-header">Budget Control</div>
-            <div class="section-content">
-                <table class="details-table">
-                    <tr>
-                        <td class="label">Status Budget</td>
-                        <td>: {{ $pengajuan->status_budget ?? '-' }}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Catatan Budget</td>
-                        <td>: {{ $pengajuan->catatan_budget ?? '-' }}</td>
-                    </tr>
-                </table>
-            </div>
+        <div class="section-header">Budget Control</div>
+        <div class="section-content">
+            <table class="details-table">
+                <tr>
+                    <td class="label">Status Budget</td>
+                    <td>: {{ $pengajuan->status_budget ?? '-' }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Catatan Budget</td>
+                    <td>: {{ $pengajuan->catatan_budget ?? '-' }}</td>
+                </tr>
+            </table>
         </div>
+    </div>
 
-        <div class="section">
-            <div class="section-header">Catatan Approval</div>
-            <div class="section-content">
-                <table class="details-table">
-                    @if(!empty(trim($pengajuan->catatan_revisi)))
-                    <tr>
-                        <td class="label">Catatan Atasan (Manager/Kadiv)</td>
-                        <td>: {!! nl2br(e(trim($pengajuan->catatan_revisi))) !!}</td>
-                    </tr>
-                    @endif
-                    @if(!empty($pengajuan->catatan_budget))
-                    <tr>
-                        <td class="label">Catatan Budget Control</td>
-                        <td>: {{ $pengajuan->catatan_budget }}</td>
-                    </tr>
-                    @endif
-                    @if(!empty($pengajuan->kadiv_ga_catatan))
-                    <tr>
-                        <td class="label">Catatan Kadiv GA</td>
-                        <td>: {{ $pengajuan->kadiv_ga_catatan }}</td>
-                    </tr>
-                    @endif
-                    @php
-                    $catatanDireksi = $pengajuan->direktur_utama_catatan ?? $pengajuan->direktur_operasional_catatan;
-                    $jabatanDireksi = $pengajuan->direktur_utama_catatan ? 'Direktur Utama' : 'Direktur Operasional';
-                    @endphp
-                    @if(!empty($catatanDireksi))
-                    <tr>
-                        <td class="label">Catatan {{ $jabatanDireksi }}</td>
-                        <td>: {{ $catatanDireksi }}</td>
-                    </tr>
-                    @endif
-                </table>
-            </div>
+    <div class="section">
+        <div class="section-header">Catatan Approval</div>
+        <div class="section-content">
+            <table class="details-table">
+                @if(!empty(trim($pengajuan->catatan_revisi)))
+                <tr>
+                    <td class="label">Catatan Atasan (Manager/Kadiv)</td>
+                    <td>: {!! nl2br(e(trim($pengajuan->catatan_revisi))) !!}</td>
+                </tr>
+                @endif
+                @if(!empty($pengajuan->catatan_budget))
+                <tr>
+                    <td class="label">Catatan Budget Control</td>
+                    <td>: {{ $pengajuan->catatan_budget }}</td>
+                </tr>
+                @endif
+                @if(!empty($pengajuan->kadiv_ga_catatan))
+                <tr>
+                    <td class="label">Catatan Kadiv GA</td>
+                    <td>: {{ $pengajuan->kadiv_ga_catatan }}</td>
+                </tr>
+                @endif
+                @php
+                $catatanDireksi = $pengajuan->direktur_utama_catatan ?? $pengajuan->direktur_operasional_catatan;
+                $jabatanDireksi = $pengajuan->direktur_utama_catatan ? 'Direktur Utama' : 'Direktur Operasional';
+                @endphp
+                @if(!empty($catatanDireksi))
+                <tr>
+                    <td class="label">Catatan {{ $jabatanDireksi }}</td>
+                    <td>: {{ $catatanDireksi }}</td>
+                </tr>
+                @endif
+            </table>
         </div>
+    </div>
 
-        <!-- <div class="page-break"></div> -->
+    <!-- <div class="page-break"></div> -->
 
-        <div class="section">
-            <div class="section-header">Riwayat Persetujuan</div>
-            <div class="section-content">
-                <div class="signature-grid">
-                    <div class="signature-box">
-                        <p class="signature-title">Diajukan oleh</p>
-                        <img src="{{ $qrCodes['pemohon'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $pengajuan->pemohon->nama_user }}</p>
-                        <p>{{ $pengajuan->pemohon->jabatan->nama_jabatan }}</p>
-                        <p>{{ $pengajuan->created_at->translatedFormat('d F Y') }}</p>
-                    </div>
-
-                    @if($atasan)
-                    <div class="signature-box">
-                        <p class="signature-title">Disetujui Atasan</p>
-                        <img src="{{ $qrCodes['atasan'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $atasan->nama_user }}</p>
-                        <p>{{ $atasan->jabatan->nama_jabatan }}</p>
-                        <p>{{ \Carbon\Carbon::parse($pengajuan->kadiv_approved_at ?? $pengajuan->manager_approved_at)->translatedFormat('d F Y') }}</p>
-                    </div>
-                    @endif
-
-                    @if($pengajuan->recommenderIt)
-                    <div class="signature-box">
-                        <p class="signature-title">Direkomendasikan IT</p>
-                        <img src="{{ $qrCodes['it'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $pengajuan->recommenderIt->nama_user }}</p>
-                        <p>{{ $pengajuan->recommenderIt->jabatan->nama_jabatan }}</p>
-                        <p>{{ \Carbon\Carbon::parse($pengajuan->it_recommended_at)->translatedFormat('d F Y') }}</p>
-                    </div>
-                    @endif
-
-                    @if($pengajuan->surveyorGa)
-                    <div class="signature-box">
-                        <p class="signature-title">Survei oleh</p>
-                        <img src="{{ $qrCodes['ga_surveyor'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $pengajuan->surveyorGa->nama_user }}</p>
-                        <p>{{ $pengajuan->surveyorGa->jabatan->nama_jabatan }}</p>
-                        <p>{{ \Carbon\Carbon::parse($pengajuan->ga_surveyed_at)->translatedFormat('d F Y') }}</p>
-                    </div>
-                    @endif
-
-                    @if($pengajuan->approverBudget)
-                    <div class="signature-box">
-                        <p class="signature-title">Budget Control</p>
-                        <img src="{{ $qrCodes['budget_approver'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $pengajuan->approverBudget->nama_user }}</p>
-                        <p>{{ $pengajuan->approverBudget->jabatan->nama_jabatan }}</p>
-                        <p>{{ \Carbon\Carbon::parse($pengajuan->budget_approved_at)->translatedFormat('d F Y') }}</p>
-                    </div>
-                    @endif
-
-                    @if($pengajuan->validatorBudgetOps)
-                    <div class="signature-box">
-                        <p class="signature-title">Validasi Budget</p>
-                        <img src="{{ $qrCodes['budget_validator'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $pengajuan->validatorBudgetOps->nama_user }}</p>
-                        <p>{{ $pengajuan->validatorBudgetOps->jabatan->nama_jabatan }}</p>
-                        <p>{{ \Carbon\Carbon::parse($pengajuan->kadiv_ops_budget_approved_at)->translatedFormat('d F Y') }}</p>
-                    </div>
-                    @endif
-
-                    @if($pengajuan->approverKadivGa)
-                    <div class="signature-box">
-                        <p class="signature-title">Disetujui Kadiv GA</p>
-                        <img src="{{ $qrCodes['kadiv_ga'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $pengajuan->approverKadivGa->nama_user }}</p>
-                        <p>{{ $pengajuan->approverKadivGa->jabatan->nama_jabatan }}</p>
-                        <p>{{ \Carbon\Carbon::parse($pengajuan->kadiv_ga_approved_at)->translatedFormat('d F Y') }}</p>
-                    </div>
-                    @endif
-
-                    @if($direksi)
-                    <div class="signature-box">
-                        <p class="signature-title">Disetujui Direksi</p>
-                        <img src="{{ $qrCodes['direksi'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $direksi->nama_user }}</p>
-                        <p>{{ $direksi->jabatan->nama_jabatan }}</p>
-                        <p>{{ \Carbon\Carbon::parse($pengajuan->direktur_utama_approved_at ?? $pengajuan->direktur_operasional_approved_at)->translatedFormat('d F Y') }}</p>
-                    </div>
-                    @endif
-
-                    @if($pengajuan->disbursedBy)
-                    <div class="signature-box">
-                        <p class="signature-title">Dibayarkan oleh</p>
-                        <img src="{{ $qrCodes['pembayar'] }}" alt="QR Code" class="signature-qr">
-                        <p class="signature-name">{{ $pengajuan->disbursedBy->nama_user }}</p>
-                        <p>{{ $pengajuan->disbursedBy->jabatan->nama_jabatan }}</p>
-                        <p>{{ \Carbon\Carbon::parse($pengajuan->disbursed_at)->translatedFormat('d F Y') }}</p>
-                    </div>
-                    @endif
+    <div class="section">
+        <div class="section-header">Riwayat Persetujuan</div>
+        <div class="section-content signature-section-content">
+            <div class="signature-grid">
+                <div class="signature-box">
+                    <p class="signature-title">Diajukan oleh</p>
+                    <img src="{{ $qrCodes['pemohon'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $pengajuan->pemohon->nama_user }}</p>
+                    <p>{{ $pengajuan->pemohon->jabatan->nama_jabatan }}</p>
+                    <p>{{ $pengajuan->created_at->translatedFormat('d F Y') }}</p>
                 </div>
+
+                @if($atasan)
+                <div class="signature-box">
+                    <p class="signature-title">Disetujui Atasan</p>
+                    <img src="{{ $qrCodes['atasan'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $atasan->nama_user }}</p>
+                    <p>{{ $atasan->jabatan->nama_jabatan }}</p>
+                    <p>{{ \Carbon\Carbon::parse($pengajuan->kadiv_approved_at ?? $pengajuan->manager_approved_at)->translatedFormat('d F Y') }}</p>
+                </div>
+                @endif
+
+                @if($pengajuan->recommenderIt)
+                <div class="signature-box">
+                    <p class="signature-title">Direkomendasikan IT</p>
+                    <img src="{{ $qrCodes['it'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $pengajuan->recommenderIt->nama_user }}</p>
+                    <p>{{ $pengajuan->recommenderIt->jabatan->nama_jabatan }}</p>
+                    <p>{{ \Carbon\Carbon::parse($pengajuan->it_recommended_at)->translatedFormat('d F Y') }}</p>
+                </div>
+                @endif
+
+                @if($pengajuan->surveyorGa)
+                <div class="signature-box">
+                    <p class="signature-title">Survei oleh</p>
+                    <img src="{{ $qrCodes['ga_surveyor'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $pengajuan->surveyorGa->nama_user }}</p>
+                    <p>{{ $pengajuan->surveyorGa->jabatan->nama_jabatan }}</p>
+                    <p>{{ \Carbon\Carbon::parse($pengajuan->ga_surveyed_at)->translatedFormat('d F Y') }}</p>
+                </div>
+                @endif
+
+                @if($pengajuan->approverBudget)
+                <div class="signature-box">
+                    <p class="signature-title">Budget Control</p>
+                    <img src="{{ $qrCodes['budget_approver'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $pengajuan->approverBudget->nama_user }}</p>
+                    <p>{{ $pengajuan->approverBudget->jabatan->nama_jabatan }}</p>
+                    <p>{{ \Carbon\Carbon::parse($pengajuan->budget_approved_at)->translatedFormat('d F Y') }}</p>
+                </div>
+                @endif
+
+                @if($pengajuan->validatorBudgetOps)
+                <div class="signature-box">
+                    <p class="signature-title">Validasi Budget</p>
+                    <img src="{{ $qrCodes['budget_validator'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $pengajuan->validatorBudgetOps->nama_user }}</p>
+                    <p>{{ $pengajuan->validatorBudgetOps->jabatan->nama_jabatan }}</p>
+                    <p>{{ \Carbon\Carbon::parse($pengajuan->kadiv_ops_budget_approved_at)->translatedFormat('d F Y') }}</p>
+                </div>
+                @endif
+
+                @if($pengajuan->approverKadivGa)
+                <div class="signature-box">
+                    <p class="signature-title">Disetujui Kadiv GA</p>
+                    <img src="{{ $qrCodes['kadiv_ga'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $pengajuan->approverKadivGa->nama_user }}</p>
+                    <p>{{ $pengajuan->approverKadivGa->jabatan->nama_jabatan }}</p>
+                    <p>{{ \Carbon\Carbon::parse($pengajuan->kadiv_ga_approved_at)->translatedFormat('d F Y') }}</p>
+                </div>
+                @endif
+
+                @if($direksi)
+                <div class="signature-box">
+                    <p class="signature-title">Disetujui Direksi</p>
+                    <img src="{{ $qrCodes['direksi'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $direksi->nama_user }}</p>
+                    <p>{{ $direksi->jabatan->nama_jabatan }}</p>
+                    <p>{{ \Carbon\Carbon::parse($pengajuan->direktur_utama_approved_at ?? $pengajuan->direktur_operasional_approved_at)->translatedFormat('d F Y') }}</p>
+                </div>
+                @endif
+
+                @if($pengajuan->disbursedBy)
+                <div class="signature-box">
+                    <p class="signature-title">Dibayarkan oleh</p>
+                    <img src="{{ $qrCodes['pembayar'] }}" alt="QR Code" class="signature-qr">
+                    <p class="signature-name">{{ $pengajuan->disbursedBy->nama_user }}</p>
+                    <p>{{ $pengajuan->disbursedBy->jabatan->nama_jabatan }}</p>
+                    <p>{{ \Carbon\Carbon::parse($pengajuan->disbursed_at)->translatedFormat('d F Y') }}</p>
+                </div>
+                @endif
             </div>
         </div>
     </div>

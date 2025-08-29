@@ -10,11 +10,13 @@ use Filament\Tables\Actions\Action;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Textarea;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
 use Illuminate\Database\Eloquent\Builder;
@@ -270,7 +272,7 @@ class RekomendasiIT extends Page implements HasTable
                 ->color('success')
                 ->icon('heroicon-o-check-circle')
                 ->requiresConfirmation()
-                ->modalWidth('3xl')
+                ->modalWidth('4xl')
                 ->modalHeading('Konfirmasi Submit Rekomendasi')
                 ->modalDescription('Apakah Anda yakin ingin menyubmit rekomendasi ini?')
                 ->modalSubmitActionLabel('Ya, Submit')
@@ -288,27 +290,39 @@ class RekomendasiIT extends Page implements HasTable
                     })->toArray();
 
                     return [
-                        // New section to display IT items at the top of the modal
-                        Section::make('Barang IT yang Diajukan')
-                            ->description('Berikut adalah detail barang IT yang memerlukan rekomendasi.')
+                        Section::make('Daftar Barang IT')
+                            ->collapsible()
                             ->schema([
                                 Repeater::make('it_items')
-                                    ->label('Daftar Barang IT')
+                                    ->label(false)
                                     ->schema([
-                                        Forms\Components\TextInput::make('nama_barang')->label('Nama Barang')->disabled(),
-                                        Forms\Components\TextInput::make('kuantitas')->label('Kuantitas')->disabled(),
-                                        Forms\Components\Textarea::make('spesifikasi')->label('Spesifikasi')->disabled(),
-                                        Forms\Components\Textarea::make('justifikasi')->label('Justifikasi')->disabled(),
+                                        TextInput::make('nama_barang')
+                                            ->label('Nama Barang')
+                                            ->disabled()
+                                            ->columnSpan(1),
+
+                                        TextInput::make('kuantitas')
+                                            ->label('Kuantitas')
+                                            ->disabled()
+                                            ->columnSpan(1),
+
+                                        Textarea::make('spesifikasi')
+                                            ->label('Spesifikasi')
+                                            ->disabled()
+                                            ->columnSpanFull(), // full width bawah
+
+                                        Textarea::make('justifikasi')
+                                            ->label('Justifikasi')
+                                            ->disabled()
+                                            ->columnSpanFull(), // full width bawah
                                     ])
                                     ->default($itItems)
                                     ->disabled()
-                                    ->collapsible()
+                                    ->columns(2) // grid kanan–kiri
                                     ->columnSpanFull(),
                             ]),
-
-                        // Existing form fields for recommendation
-                        Forms\Components\Select::make('rekomendasi_it_tipe')->label('Tipe Rekomendasi')->options(['Pembelian Baru' => 'Pembelian Baru', 'Perbaikan' => 'Perbaikan'])->required(),
-                        Forms\Components\Textarea::make('rekomendasi_it_catatan')->label('Catatan Rekomendasi')->required(),
+                        Select::make('rekomendasi_it_tipe')->label('Tipe Rekomendasi')->options(['Pembelian Baru' => 'Pembelian Baru', 'Perbaikan' => 'Perbaikan'])->required(),
+                        Textarea::make('rekomendasi_it_catatan')->label('Catatan Rekomendasi')->required(),
                     ];
                 })
                 ->action(function (array $data, Pengajuan $record) {
