@@ -39,7 +39,6 @@ class StatusPengajuanSaya extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            // TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
                 ->money('IDR')
@@ -64,7 +63,7 @@ class StatusPengajuanSaya extends Page implements HasTable
                     if ($latestRevisi) {
                         $hargaAwalBarang = $latestRevisi->harga_awal;
                         $vendorName = $latestRevisi->surveiHarga?->nama_vendor;
-                        if (!$vendorName) return 'Nilai Awal: -'; // Fallback jika vendor tidak ditemukan
+                        if (!$vendorName) return 'Nilai Awal: -';
                         $totalPajakAwal = 0;
                         foreach ($record->items as $item) {
                             $survey = $item->surveiHargas

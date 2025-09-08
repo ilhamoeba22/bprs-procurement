@@ -535,7 +535,6 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                     ]),
                 ])
                 ->mountUsing(function (Form $form, Pengajuan $record): void {
-                    // mountUsing untuk mengisi data ringkasan Revisi
                     $formData = $record->toArray();
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
                     if ($latestRevisi) {

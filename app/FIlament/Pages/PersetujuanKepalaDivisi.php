@@ -120,7 +120,6 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
             BadgeColumn::make('tindakan_saya')
                 ->label('Keterangan')
                 ->state(function (Pengajuan $record): string {
-                    // [PERBAIKAN] Menggunakan kondisi yang benar
                     if ($record->kadiv_approved_by === Auth::id()) {
                         return 'Sudah Diproses';
                     }

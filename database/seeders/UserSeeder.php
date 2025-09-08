@@ -15,12 +15,10 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        // Kosongkan tabel users untuk memulai dari awal yang bersih
         DB::statement('SET FOREIGN_KEY_CHECKS=0;');
         User::truncate();
         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
-        // === 1. BUAT SUPER ADMIN TERLEBIH DAHULU ===
         $jabatanSuperAdmin = Jabatan::where('nama_jabatan', 'System Administrator')->first();
         if ($jabatanSuperAdmin) {
             $userSuperAdmin = User::create([
