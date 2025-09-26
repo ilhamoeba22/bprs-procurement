@@ -4,7 +4,6 @@ namespace App\Providers\Filament;
 
 use Filament\Pages;
 use Filament\Panel;
-use Filament\Widgets;
 use Filament\PanelProvider;
 use App\Filament\Pages\Auth\Login;
 use Filament\Support\Colors\Color;
@@ -14,11 +13,9 @@ use Illuminate\Session\Middleware\StartSession;
 use App\Filament\Widgets\PengeluaranHarianChart;
 use App\Filament\Widgets\RiwayatPengajuanWidget;
 use Illuminate\Cookie\Middleware\EncryptCookies;
-use App\Filament\Widgets\CombinedDashboardCharts;
 use App\Filament\Widgets\PengajuanPerDivisiChart;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
-use App\Filament\Widgets\RekapPengeluaranPengajuanChart;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -32,6 +29,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()->id('admin')->path('admin')
             ->brandLogo(asset('images/logo_mci.png'))
             ->brandLogoHeight('55px')
+            ->favicon(asset('images/head_logo.png'))
             ->login(Login::class)
             ->colors(['primary' => Color::Amber])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')

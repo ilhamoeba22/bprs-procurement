@@ -46,9 +46,8 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
-        $query = Pengajuan::query()->with(['items', 'items.surveiHargas', 'pemohon.divisi']);
+        $query = Pengajuan::query()->with(['items', 'pemohon.divisi']);
 
-        // Super Admin melihat semua pengajuan di tahap ini
         if ($user->hasRole('Super Admin')) {
             return $query->whereIn('status', [
                 Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV,
@@ -57,11 +56,19 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
             ])->orWhereNotNull('kadiv_approved_by');
         }
 
-        // Kadiv hanya melihat pengajuan yang relevan untuknya
-        return $query->where(function (Builder $query) use ($user) {
-            $query->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV)
-                ->whereHas('pemohon', fn(Builder $q) => $q->where('id_divisi', $user->id_divisi));
-        })->orWhere('kadiv_approved_by', $user->id_user);
+        $query->where(function (Builder $q) use ($user) {
+
+            $q->where(function (Builder $subQ) use ($user) {
+                $subQ->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV)
+                    ->whereHas('pemohon', function (Builder $pemohonQ) use ($user) {
+                        $pemohonQ->where('id_divisi', $user->id_divisi);
+                    });
+            })
+
+                ->orWhere('kadiv_approved_by', $user->id_user);
+        });
+
+        return $query->latest();
     }
 
     protected function getTableColumns(): array

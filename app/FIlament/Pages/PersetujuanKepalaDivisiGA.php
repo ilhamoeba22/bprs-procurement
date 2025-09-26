@@ -17,6 +17,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
+use Illuminate\Support\Facades\Storage;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
@@ -103,7 +104,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                     if ($latestRevisi) {
                         $hargaAwalBarang = $latestRevisi->harga_awal;
                         $vendorName = $latestRevisi->surveiHarga?->nama_vendor;
-                        if (!$vendorName) return 'Nilai Awal: -'; // Fallback jika vendor tidak ditemukan
+                        if (!$vendorName) return 'Nilai Awal: -';
                         $totalPajakAwal = 0;
                         foreach ($record->items as $item) {
                             $survey = $item->surveiHargas
@@ -114,11 +115,9 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                                 $totalPajakAwal += $survey->nominal_pajak;
                             }
                         }
-
                         $totalBiayaAwal = $hargaAwalBarang + $totalPajakAwal;
                         return 'Nilai Awal: ' . number_format($totalBiayaAwal, 0, ',', '.');
                     }
-
                     return null;
                 }),
 
@@ -129,12 +128,10 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
             BadgeColumn::make('tindakan_saya')
                 ->label('Keterangan')
                 ->state(function (Pengajuan $record): string {
-                    // Prioritas utama: jika user ini sudah memproses, tampilkan "Sudah Diproses"
                     if ($record->kadiv_ga_approved_by === Auth::id()) {
                         return 'Sudah Diproses';
                     }
 
-                    // Jika belum, tampilkan status relevan lainnya
                     return match ($record->status) {
                         Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA,
                         Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI
@@ -335,12 +332,14 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                 ]),
 
 
+
+
             Action::make('process_decision')
-                ->label('Proses Keputusan')
+                ->label('Keputusan')
                 ->color('primary')
                 ->icon('heroicon-o-check-circle')
                 ->form([
-                    ...$this->getSummarySchema(), // <-- Menambahkan section ringkasan
+                    ...$this->getSummarySchema(),
                     Section::make('Form Keputusan')->schema([
                         Radio::make('keputusan_final')
                             ->label('Persetujuan Final')
@@ -352,7 +351,6 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                     ]),
                 ])
                 ->mountUsing(function (Form $form, Pengajuan $record): void {
-                    // mountUsing untuk mengisi data ringkasan
                     $formData = $record->toArray();
                     $getScenarioDetails = function ($items) use ($record) {
                         $details = [];
@@ -449,7 +447,6 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                             'status' => Pengajuan::STATUS_DITOLAK_KADIV_GA,
                             'kadiv_ga_decision_type' => 'Tolak',
                             'kadiv_ga_catatan' => $data['kadiv_ga_catatan'],
-                            // 'catatan_revisi' => trim($catatan),
                             'kadiv_ga_approved_by' => $user->id_user,
                             'kadiv_ga_approved_at' => now(),
                         ]);
@@ -508,7 +505,6 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                         'total_nilai' => $nilaiFinal,
                         'kadiv_ga_decision_type' => 'Setuju',
                         'kadiv_ga_catatan' => $data['kadiv_ga_catatan'],
-                        // 'catatan_revisi' => trim($catatan),
                         'status' => $newStatus,
                         'kadiv_ga_approved_by' => $user->id_user,
                         'kadiv_ga_approved_at' => now(),
@@ -519,7 +515,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA),
 
             Action::make('process_revisi_decision')
-                ->label('Proses Keputusan (Revisi)')
+                ->label('Keputusan (Revisi)')
                 ->color('warning')
                 ->icon('heroicon-o-arrow-path')
                 ->form([
@@ -600,6 +596,40 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                     Notification::make()->title('Revisi berhasil disetujui')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => trim($record->status) === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI),
+
+            Action::make('download_bukti_penawaran')
+                ->label('Bukti Penawaran')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->color('success')
+
+                ->action(function (Pengajuan $record) {
+                    $record->loadMissing('items.surveiHargas');
+
+                    $filePath = $record->items
+                        ->flatMap->surveiHargas
+                        ->pluck('bukti_path')
+                        ->first();
+
+                    if (!$filePath) {
+                        Notification::make()
+                            ->title('Tidak Ada Bukti')
+                            ->body('Belum ada file bukti penawaran vendor yang diupload.')
+                            ->warning()
+                            ->send();
+                        return;
+                    }
+
+                    if (!Storage::disk('private')->exists($filePath)) {
+                        Notification::make()
+                            ->title('File Tidak Ditemukan')
+                            ->body('File bukti penawaran tidak ditemukan di server.')
+                            ->danger()
+                            ->send();
+                        return;
+                    }
+
+                    return response()->download(Storage::disk('private')->path($filePath));
+                }),
         ];
     }
 }

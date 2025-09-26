@@ -45,13 +45,22 @@ class PersetujuanManager extends Page implements HasTable
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
+        $query = Pengajuan::query()->with(['items', 'pemohon.divisi']);
 
-        return Pengajuan::query()
-            ->where(function (Builder $query) use ($user) {
-                $query->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER)
-                    ->whereHas('pemohon', fn(Builder $q) => $q->where('id_divisi', $user->id_divisi));
-            })
+        if ($user->hasRole('Super Admin')) {
+            return $query->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER)
+                ->orWhereNotNull('manager_approved_by');
+        }
+
+        $query->where(function (Builder $q) use ($user) {
+            $q->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER)
+                ->whereHas('pemohon', function (Builder $pemohonQ) use ($user) {
+                    $pemohonQ->where('id_divisi', $user->id_divisi);
+                });
+        })
             ->orWhere('manager_approved_by', $user->id_user);
+
+        return $query->latest();
     }
 
     protected function getTableColumns(): array

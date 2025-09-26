@@ -142,17 +142,19 @@
 
         .paid-stamp {
             position: absolute;
-            right: 20px;
-            top: 70px;
+            right: 15px;
+            top: 50px;
             transform: rotate(-10deg);
             font-size: 24px;
             font-weight: bold;
             color: #28a745;
-            border: 3px solid #28a745;
+            border: 3px solid rgba(40, 167, 69, 0.5);
+            /* Semi-transparent green border */
             padding: 5px 10px;
             border-radius: 5px;
             text-align: center;
-            background-color: #fff;
+            background-color: transparent;
+            /* Transparent background */
             opacity: 0.9;
             line-height: 1.2;
         }
@@ -188,13 +190,13 @@
             vertical-align: top;
             width: 24%;
             /* Lebar untuk 4 kolom dengan sedikit spasi */
-            padding: 5px;
+            padding: 3px;
             text-align: center;
-            height: 160px;
+            height: 150px;
             /* Tinggi disesuaikan */
             font-size: 10px;
             /* Ukuran font direset */
-            margin: 5px 0;
+            margin: 3px 0;
         }
 
         .signature-box p {

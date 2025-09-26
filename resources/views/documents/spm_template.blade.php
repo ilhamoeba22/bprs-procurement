@@ -85,17 +85,17 @@
 
         .paid-stamp-small {
             position: absolute;
-            right: 20px;
+            right: 40px;
             top: 70px;
             transform: rotate(-10deg);
             font-size: 24px;
             font-weight: bold;
             color: #28a745;
-            border: 3px solid #28a745;
+            border: 3px solid rgba(40, 167, 69, 0.5);
             padding: 5px 10px;
             border-radius: 5px;
             text-align: center;
-            background-color: #fff;
+            background-color: transparent;
             opacity: 0.9;
             line-height: 1.2;
         }
