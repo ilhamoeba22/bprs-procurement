@@ -34,7 +34,7 @@ class PersetujuanManager extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Approval Manager)';
+        return 'Daftar Pengajuan - Approval Manager';
     }
 
     public static function canAccess(): bool

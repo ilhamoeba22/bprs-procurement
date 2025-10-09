@@ -47,7 +47,7 @@ class SurveiHargaGA extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Survei Harga GA)';
+        return 'Daftar Pengajuan - Survei Harga GA';
     }
 
     public static function canAccess(): bool
@@ -417,7 +417,7 @@ class SurveiHargaGA extends Page implements HasTable
             }
 
             $record->update([
-                'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
+                'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA,
                 'ga_surveyed_by' => Auth::id(),
                 'ga_surveyed_at' => now(),
             ]);
@@ -787,10 +787,7 @@ class SurveiHargaGA extends Page implements HasTable
                 })
                 ->form(fn(Pengajuan $record) => $this->getSurveyFormSchema($record))
                 ->action(fn(array $data, Pengajuan $record) => ($this->getSurveyActionLogic())($data, $record, 'Hasil survei berhasil diperbarui'))
-                ->visible(fn(Pengajuan $record) => in_array($record->status, [
-                    Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
-                    Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET,
-                ])),
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA),
 
             Action::make('penyelesaian')
                 ->label('Penyelesaian')

@@ -38,7 +38,7 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Approval Direktur Operasional)';
+        return 'Daftar Pengajuan - Approval Direktur Operasional';
     }
 
     public static function canAccess(): bool

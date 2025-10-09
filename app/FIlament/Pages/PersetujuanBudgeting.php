@@ -37,7 +37,7 @@ class PersetujuanBudgeting extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Persetujuan Budgeting)';
+        return 'Daftar Pengajuan - Budget Control';
     }
 
     public static function canAccess(): bool
@@ -291,6 +291,8 @@ class PersetujuanBudgeting extends Page implements HasTable
                     $formData['direktur_operasional_approved_by_name'] = $record->approverDirOps?->nama_user;
                     $formData['direktur_utama_approved_by_name'] = $record->approverDirUtama?->nama_user;
 
+                    // dd($formData);
+
                     $getScenarioDetails = function ($items) use ($record) {
                         $details = [];
                         $totalCost = 0;
@@ -423,115 +425,19 @@ class PersetujuanBudgeting extends Page implements HasTable
                 ->modalHeading('Form Review Budget')
                 ->form(fn(Pengajuan $record) => $this->getBudgetReviewFormSchema($record))
                 ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
-                    $record->load([
-                        'items.surveiHargas',
-                        'vendorPembayaran',
+                    $form->fill([
+                        'estimasi_biaya' => $this->getScenarioDetails($record),
                     ]);
-
-                    $formData = [];
-
-                    $getScenarioDetails = function ($items) use ($record) {
-                        $details = [];
-                        $totalCost = 0;
-                        $nominalDp = 0;
-                        $nominalDp = 0;
-
-                        $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
-
-                        if ($groupedSurveys->isEmpty()) {
-                            return null;
-                        }
-
-                        $vendorTotals = [];
-                        foreach ($groupedSurveys as $namaVendor => $surveys) {
-                            $vendorTotal = 0;
-                            $allItemsCovered = $items->every(function ($item) use ($surveys) {
-                                return $surveys->where('id_item', $item->id_item)->isNotEmpty();
-                            });
-
-                            if (!$allItemsCovered) {
-                                continue;
-                            }
-
-                            foreach ($items as $item) {
-                                $survey = $surveys->where('id_item', $item->id_item)->first();
-                                if (!$survey) continue;
-                                $itemCost = $survey->harga * $item->kuantitas;
-                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung BPRS' ? ($survey->nominal_pajak ?? 0) : 0;
-                                $vendorTotal += ($itemCost + $taxCost);
-                            }
-                            $vendorTotals[$namaVendor] = $vendorTotal;
-                        }
-
-                        if (empty($vendorTotals)) {
-                            return null;
-                        }
-
-                        $cheapestVendor = array_key_first($vendorTotals);
-                        $minTotal = min($vendorTotals);
-                        foreach ($vendorTotals as $vendor => $total) {
-                            if ($total === $minTotal) {
-                                $cheapestVendor = $vendor;
-                                break;
-                            }
-                        }
-
-                        $cheapestSurveys = $groupedSurveys[$cheapestVendor] ?? [];
-                        foreach ($items as $item) {
-                            $survey = $cheapestSurveys->where('id_item', $item->id_item)->first();
-                            if (!$survey) continue;
-                            $itemCost = $survey->harga * $item->kuantitas;
-                            $taxInfo = 'Tidak ada pajak';
-                            $taxCost = 0;
-                            if ($survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)') {
-                                $taxCost = $survey->nominal_pajak ?? 0;
-                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
-                            } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
-                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Included';
-                            }
-                            $details[] = [
-                                'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
-                                'tipe_survei' => $survey->tipe_survei,
-                                'harga_vendor' => 'Rp ' . number_format($itemCost, 0, ',', '.'),
-                                'pajak_info' => $taxInfo,
-                            ];
-                            $totalCost += ($itemCost + $taxCost);
-                        }
-
-                        $vendorPembayaran = $record->vendorPembayaran->where('nama_vendor', $cheapestVendor)->first();
-                        if ($vendorPembayaran && $vendorPembayaran->nominal_dp > 0) {
-                            $nominalDp = $vendorPembayaran->nominal_dp;
-                        }
-
-                        return empty($details) ? null : [
-                            'details' => $details,
-                            'total' => 'Rp ' . number_format($totalCost, 0, ',', '.'),
-                            'nominal_dp' => $nominalDp > 0 ? 'Rp ' . number_format($nominalDp, 0, ',', '.') : 'Tidak ada DP'
-                        ];
-                    };
-                    $formData['estimasi_biaya'] = $getScenarioDetails($record->items);
-
-                    $form->fill($formData);
                 })
                 ->action(function (array $data, Pengajuan $record) {
-                    // Validasi data form
-                    if (!isset($data['status_budget']) || !isset($data['catatan_budget'])) {
-                        Notification::make()->title('Gagal')->body('Data status atau catatan budget tidak lengkap.')->danger()->send();
-                        return;
-                    }
-
-                    // HAPUS BLOK PERHITUNGAN NILAI FINAL DARI SINI
-
                     $record->update([
-                        // 'total_nilai' TIDAK LAGI DISIMPAN DI SINI
                         'status_budget' => $data['status_budget'],
                         'catatan_budget' => $data['catatan_budget'],
                         'budget_approved_by' => Auth::id(),
-                        'budget_approved_at' => now(), // <-- BARIS DITAMBAHKAN
-                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET, //
+                        'budget_approved_at' => now(),
+                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET,
                     ]);
-
-                    Notification::make()->title('Review budget berhasil disubmit')->success()->send();
+                    Notification::make()->title('Review budget berhasil disubmit')->body('Pengajuan diteruskan ke Kepala Divisi Operasional.')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET),
 
@@ -542,118 +448,19 @@ class PersetujuanBudgeting extends Page implements HasTable
                 ->modalHeading('Edit Review Budget')
                 ->form(fn(Pengajuan $record) => $this->getBudgetReviewFormSchema($record))
                 ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
-                    $record->load([
-                        'items.surveiHargas',
-                        'vendorPembayaran',
+                    $form->fill([
+                        'estimasi_biaya' => $this->getScenarioDetails($record),
+                        'status_budget' => $record->status_budget,
+                        'catatan_budget' => $record->catatan_budget,
                     ]);
-
-                    $formData = [];
-
-                    $getScenarioDetails = function ($items) use ($record) {
-                        $details = [];
-                        $totalCost = 0;
-                        $nominalDp = 0;
-                        $nominalDp = 0;
-
-                        $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
-
-                        if ($groupedSurveys->isEmpty()) {
-                            return null;
-                        }
-
-                        $vendorTotals = [];
-                        foreach ($groupedSurveys as $namaVendor => $surveys) {
-                            $vendorTotal = 0;
-                            $allItemsCovered = $items->every(function ($item) use ($surveys) {
-                                return $surveys->where('id_item', $item->id_item)->isNotEmpty();
-                            });
-
-                            if (!$allItemsCovered) {
-                                continue;
-                            }
-
-                            foreach ($items as $item) {
-                                $survey = $surveys->where('id_item', $item->id_item)->first();
-                                if (!$survey) continue;
-                                $itemCost = $survey->harga * $item->kuantitas;
-                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung BPRS' ? ($survey->nominal_pajak ?? 0) : 0;
-                                $vendorTotal += ($itemCost + $taxCost);
-                            }
-                            $vendorTotals[$namaVendor] = $vendorTotal;
-                        }
-
-                        if (empty($vendorTotals)) {
-                            return null;
-                        }
-
-                        $cheapestVendor = array_key_first($vendorTotals);
-                        $minTotal = min($vendorTotals);
-                        foreach ($vendorTotals as $vendor => $total) {
-                            if ($total === $minTotal) {
-                                $cheapestVendor = $vendor;
-                                break;
-                            }
-                        }
-
-                        $cheapestSurveys = $groupedSurveys[$cheapestVendor] ?? [];
-                        foreach ($items as $item) {
-                            $survey = $cheapestSurveys->where('id_item', $item->id_item)->first();
-                            if (!$survey) continue;
-                            $itemCost = $survey->harga * $item->kuantitas;
-                            $taxInfo = 'Tidak ada pajak';
-                            $taxCost = 0;
-                            if ($survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)') {
-                                $taxCost = $survey->nominal_pajak ?? 0;
-                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
-                            } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
-                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Included';
-                            }
-                            $details[] = [
-                                'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
-                                'tipe_survei' => $survey->tipe_survei,
-                                'harga_vendor' => 'Rp ' . number_format($itemCost, 0, ',', '.'),
-                                'pajak_info' => $taxInfo,
-                            ];
-                            $totalCost += ($itemCost + $taxCost);
-                        }
-
-                        $vendorPembayaran = $record->vendorPembayaran->where('nama_vendor', $cheapestVendor)->first();
-                        if ($vendorPembayaran && $vendorPembayaran->nominal_dp > 0) {
-                            $nominalDp = $vendorPembayaran->nominal_dp;
-                        }
-
-                        return empty($details) ? null : [
-                            'details' => $details,
-                            'total' => 'Rp ' . number_format($totalCost, 0, ',', '.'),
-                            'nominal_dp' => $nominalDp > 0 ? 'Rp ' . number_format($nominalDp, 0, ',', '.') : 'Tidak ada DP'
-                        ];
-                    };
-                    $formData['estimasi_biaya'] = $getScenarioDetails($record->items);
-                    $formData['status_budget'] = $record->status_budget;
-                    $formData['catatan_budget'] = $record->catatan_budget;
-
-                    $form->fill($formData);
                 })
                 ->action(function (array $data, Pengajuan $record) {
-                    if (!isset($data['status_budget']) || !isset($data['catatan_budget'])) {
-                        Notification::make()
-                            ->title('Gagal menyimpan review budget')
-                            ->body('Data status budget atau catatan budget tidak lengkap.')
-                            ->danger()
-                            ->send();
-                        return;
-                    }
-
                     $record->update([
                         'status_budget' => $data['status_budget'],
                         'catatan_budget' => $data['catatan_budget'],
                         'budget_approved_at' => now(),
                     ]);
-
-                    Notification::make()
-                        ->title('Review budget berhasil diupdate')
-                        ->success()
-                        ->send();
+                    Notification::make()->title('Review budget berhasil diupdate')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET),
 
@@ -663,57 +470,7 @@ class PersetujuanBudgeting extends Page implements HasTable
                 ->icon('heroicon-o-arrow-path')
                 ->modalHeading('Form Review Budget (Revisi)')
                 ->form([
-                    Section::make('Review Budget untuk Revisi')->schema([
-                        Grid::make(2)->schema([
-                            Select::make('revisi_budget_status_pengadaan')
-                                ->label('Status Budget Revisi')
-                                ->options([
-                                    'Budget Tersedia' => 'Budget Tersedia',
-                                    'Budget Habis' => 'Budget Habis',
-                                    'Budget Tidak Ada di RBB' => 'Budget Tidak Ada di RBB',
-                                ])
-                                ->required(),
-                            Textarea::make('revisi_budget_catatan_pengadaan')
-                                ->label('Catatan Budget Revisi')
-                                ->required()
-                                ->rows(4),
-                        ]),
-                    ]),
-                ])
-                ->action(function (array $data, Pengajuan $record) {
-                    $latestRevisi = $record->items
-                        ->flatMap->surveiHargas
-                        ->flatMap->revisiHargas
-                        ->sortByDesc('created_at')
-                        ->first();
-
-                    if (!$latestRevisi) {
-                        Notification::make()->title('Error')->body('Data revisi aktif tidak ditemukan.')->danger()->send();
-                        return;
-                    }
-
-                    $latestRevisi->update([
-                        'revisi_budget_status_pengadaan' => $data['revisi_budget_status_pengadaan'],
-                        'revisi_budget_catatan_pengadaan' => $data['revisi_budget_catatan_pengadaan'],
-                        'revisi_budget_approved_by' => Auth::id(),
-                    ]);
-
-                    $record->update([
-                        'budget_approved_at' => now(),
-                        'status' => Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS
-                    ]);
-
-                    Notification::make()->title('Review budget revisi berhasil disubmit')->success()->send();
-                })
-                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI),
-
-            Action::make('edit_revisi_budget_review')
-                ->label('Edit Review Budget (Revisi)')
-                ->color('warning')
-                ->icon('heroicon-o-pencil')
-                ->modalHeading('Edit Form Review Budget (Revisi)')
-                ->form([
-                    Section::make('Edit Review Budget untuk Revisi')->schema([
+                    Section::make('Form Review Budget untuk Revisi')->schema([
                         Grid::make(2)->schema([
                             Select::make('revisi_budget_status_pengadaan')
                                 ->label('Status Budget Revisi')
@@ -725,34 +482,111 @@ class PersetujuanBudgeting extends Page implements HasTable
                         ]),
                     ]),
                 ])
-                ->mountUsing(function (Forms\Form $form, Pengajuan $record): void {
-                    $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
-                    if ($latestRevisi) {
-                        $form->fill([
-                            'revisi_budget_status_pengadaan' => $latestRevisi->revisi_budget_status_pengadaan,
-                            'revisi_budget_catatan_pengadaan' => $latestRevisi->revisi_budget_catatan_pengadaan,
-                        ]);
-                    }
-                })
                 ->action(function (array $data, Pengajuan $record) {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
                     if (!$latestRevisi) {
                         Notification::make()->title('Error')->body('Data revisi aktif tidak ditemukan.')->danger()->send();
                         return;
                     }
-
                     $latestRevisi->update([
                         'revisi_budget_status_pengadaan' => $data['revisi_budget_status_pengadaan'],
                         'revisi_budget_catatan_pengadaan' => $data['revisi_budget_catatan_pengadaan'],
+                        'revisi_budget_approved_by' => Auth::id(),
                     ]);
-
                     $record->update([
                         'budget_approved_at' => now(),
+                        'status' => Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS
                     ]);
-
-                    Notification::make()->title('Review budget revisi berhasil diupdate')->success()->send();
+                    Notification::make()->title('Review budget revisi berhasil disubmit')->success()->send();
                 })
-                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS),
+                ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI),
         ];
+    }
+
+    private function getScenarioDetails(Pengajuan $record): ?array
+    {
+        $record->loadMissing(['items.surveiHargas', 'vendorPembayaran']);
+        $items = $record->items;
+        $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
+
+        if ($groupedSurveys->isEmpty()) return null;
+
+        $vendorTotals = [];
+        foreach ($groupedSurveys as $namaVendor => $surveys) {
+            $allItemsCovered = $items->every(fn($item) => $surveys->where('id_item', $item->id_item)->isNotEmpty());
+            if (!$allItemsCovered) continue;
+
+            $vendorTotal = 0;
+            foreach ($items as $item) {
+                $survey = $surveys->where('id_item', $item->id_item)->first();
+                if (!$survey) continue;
+                $itemCost = $survey->harga * $item->kuantitas;
+                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)' ? ($survey->nominal_pajak ?? 0) : 0;
+                $vendorTotal += ($itemCost + $taxCost);
+            }
+            $vendorTotals[$namaVendor] = $vendorTotal;
+        }
+
+        if (empty($vendorTotals)) return null;
+
+        $minTotal = min($vendorTotals);
+        $cheapestVendorName = array_search($minTotal, $vendorTotals);
+
+        $details = [];
+        $totalCost = 0;
+        $nominalDp = 0;
+        $cheapestSurveys = $groupedSurveys[$cheapestVendorName] ?? collect();
+
+        foreach ($items as $item) {
+            $survey = $cheapestSurveys->where('id_item', $item->id_item)->first();
+            if (!$survey) continue;
+
+            $itemCost = $survey->harga * $item->kuantitas;
+            $taxInfo = 'Tidak ada pajak';
+            $taxCost = 0;
+
+            if ($survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)') {
+                $taxCost = $survey->nominal_pajak ?? 0;
+                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
+            } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
+                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Included';
+            }
+
+            $details[] = [
+                'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
+                'tipe_survei' => $survey->tipe_survei,
+                'harga_vendor' => 'Rp ' . number_format($itemCost, 0, ',', '.'),
+                'pajak_info' => $taxInfo,
+            ];
+            $totalCost += ($itemCost + $taxCost);
+        }
+
+        $vendorPembayaran = $record->vendorPembayaran->where('nama_vendor', $cheapestVendorName)->first();
+        if ($vendorPembayaran && $vendorPembayaran->nominal_dp > 0) {
+            $nominalDp = $vendorPembayaran->nominal_dp;
+        }
+
+        return [
+            'details' => $details,
+            'total' => 'Rp ' . number_format($totalCost, 0, ',', '.'),
+            'nominal_dp' => $nominalDp > 0 ? 'Rp ' . number_format($nominalDp, 0, ',', '.') : 'Tidak ada DP',
+            'total_cost_raw' => $totalCost,
+        ];
+    }
+
+    private function getInitialTax(Pengajuan $record, ?string $vendorName): float
+    {
+        if (!$vendorName) return 0;
+        $totalPajakAwal = 0;
+        foreach ($record->items as $item) {
+            $survey = $item->surveiHargas
+                ->where('nama_vendor', $vendorName)
+                ->where('kondisi_pajak', 'Pajak ditanggung Perusahaan (Exclude)')
+                ->first();
+            if ($survey) {
+                $totalPajakAwal += $survey->nominal_pajak;
+            }
+        }
+        return $totalPajakAwal;
     }
 }

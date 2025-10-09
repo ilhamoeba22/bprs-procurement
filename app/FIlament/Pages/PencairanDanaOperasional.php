@@ -48,7 +48,7 @@ class PencairanDanaOperasional extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Pencairan Dana)';
+        return 'Daftar Pengajuan - Pencairan Dana';
     }
 
     public static function canAccess(): bool
@@ -705,7 +705,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                         'disbursedByName' => $record->disbursedBy?->nama_user,
                         'kadivGaQrCode' => $generateQrCode($record->approverKadivGa),
                         'direkturQrCode' => $generateQrCode($direktur),
-                        'disbursedByQrCode' => $generateQrCode($record->disbursedBy), // <-- QR Code untuk pembayar
+                        'disbursedByQrCode' => $generateQrCode($record->disbursedBy),
                         'is_paid' => !empty($finalVendor->bukti_pelunasan),
                     ];
 

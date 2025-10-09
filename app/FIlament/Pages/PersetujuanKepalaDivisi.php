@@ -35,7 +35,7 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Approval Kepala Divisi)';
+        return 'Daftar Pengajuan - Approval Kepala Divisi';
     }
 
     public static function canAccess(): bool

@@ -53,6 +53,8 @@ class Pengajuan extends Model
         'direktur_utama_catatan',
         'direktur_operasional_decision_type',
         'direktur_operasional_catatan',
+        'kadiv_ops_decision_type',
+        'kadiv_ops_catatan',
     ];
 
     public const STATUS_DRAFT = 'Draft';
@@ -77,6 +79,7 @@ class Pengajuan extends Model
     public const STATUS_DITOLAK_DIREKTUR_UTAMA = 'Ditolak oleh Direktur Utama';
     public const STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI = 'Menunggu Persetujuan Budget (Revisi)';
     public const STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS = 'Menunggu Validasi Budget (Revisi) Kadiv Operasional';
+    public const STATUS_DITOLAK_KADIV_OPS = 'Ditolak oleh Kepala Divisi Operasional';
     public const STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI = 'Menunggu Approval Kadiv GA (Revisi)';
     public const STATUS_MENUNGGU_PENCARIAN_DANA_REVISI = 'Menunggu Pencarian Dana (Revisi)';
     public const STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI = 'Menunggu Approval Direktur Operasional (Revisi)';
