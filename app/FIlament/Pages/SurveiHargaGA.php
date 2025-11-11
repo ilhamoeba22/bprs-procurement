@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use Carbon\Carbon;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
@@ -9,10 +10,13 @@ use App\Models\Pengajuan;
 use App\Models\RevisiHarga;
 use App\Models\SurveiHarga;
 use Illuminate\Support\Str;
+use Barryvdh\DomPDF\Facade\Pdf;
 use App\Models\VendorPembayaran;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\HtmlString;
+use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
+use Illuminate\Support\Facades\URL;
 use Filament\Forms\Components\Radio;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Hidden;
@@ -31,10 +35,11 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\Placeholder;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 use Filament\Tables\Concerns\InteractsWithTable;
 use App\Filament\Components\RevisiTimelineSection;
 use App\Filament\Components\StandardDetailSections;
-use Filament\Forms\Components\Grid;
+
 
 class SurveiHargaGA extends Page implements HasTable
 {
@@ -90,6 +95,11 @@ class SurveiHargaGA extends Page implements HasTable
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
+            TextColumn::make('nama_barang')->label('Nama Barang')->searchable()->getStateUsing(function (Pengajuan $record): string {
+                $firstItem = $record->items->first();
+                return $firstItem ? $firstItem->nama_barang : '-';
+            }),
+
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
                 ->money('IDR')
@@ -698,21 +708,23 @@ class SurveiHargaGA extends Page implements HasTable
                             }
                         }
                     }
+
                     $pajakData = [];
                     if ($data['opsi_pajak'] === 'Pajak Sama') {
                         $pajakData = [
-                            'kondisi_pajak' => $totalPajakAwal > 0 ? 'Pajak ditanggung Perusahaan (Exclude)' : 'Tidak Ada Pajak',
+                            'kondisi_pajak' => $totalPajakAwal > 0 ? 'Pajak ditanggung BPRS' : 'Tidak Ada Pajak',
                             'jenis_pajak' => $jenisPajakAwal,
                             'nominal_pajak' => $totalPajakAwal,
                         ];
                     } else {
                         $nominalPajakBaru = $data['nominal_pajak_baru'] ?? 0;
                         $pajakData = [
-                            'kondisi_pajak' => $nominalPajakBaru > 0 ? 'Pajak ditanggung Perusahaan (Exclude)' : 'Tidak Ada Pajak',
+                            'kondisi_pajak' => $nominalPajakBaru > 0 ? 'Pajak ditanggung BPRS' : 'Tidak Ada Pajak',
                             'jenis_pajak' => $data['jenis_pajak_baru'] ?? null,
                             'nominal_pajak' => $nominalPajakBaru,
                         ];
                     }
+
                     RevisiHarga::create(array_merge([
                         'survei_harga_id' => $firstSurvey->id,
                         'harga_awal' => $totalNilaiBarangOriginal,
@@ -723,6 +735,7 @@ class SurveiHargaGA extends Page implements HasTable
                         'direvisi_oleh' => Auth::id(),
                         'opsi_pajak' => $data['opsi_pajak'],
                     ], $pajakData));
+
                     $record->update(['status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI]);
                     Notification::make()->title('Revisi Harga Berhasil')->body('Pengajuan akan diproses untuk approval ulang.')->success()->send();
                 })
@@ -789,17 +802,169 @@ class SurveiHargaGA extends Page implements HasTable
                 ->action(fn(array $data, Pengajuan $record) => ($this->getSurveyActionLogic())($data, $record, 'Hasil survei berhasil diperbarui'))
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA),
 
+            Action::make('download_spm')
+                ->label('SPM')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->color('success')
+                ->visible(
+                    fn(Pengajuan $record) =>
+                    in_array($record->status, [
+                        Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                        Pengajuan::STATUS_MENUNGGU_PELUNASAN,
+                        Pengajuan::STATUS_SUDAH_BAYAR,
+                        Pengajuan::STATUS_SELESAI,
+                    ])
+                )
+                ->action(function (Pengajuan $record) {
+                    $finalVendor = $record->vendorPembayaran()->where('is_final', true)->first();
+                    if (!$finalVendor) {
+                        Notification::make()
+                            ->title('Gagal Mencetak SPM')
+                            ->body('Vendor final untuk pengajuan ini belum ditentukan.')
+                            ->danger()
+                            ->send();
+                        return;
+                    }
+
+                    $record->load('approverDirUtama', 'approverDirOps', 'validatorBudgetOps', 'disbursedBy');
+
+                    $itemsOriginal = [];
+                    $totalNilaiBarangOriginal = 0;
+                    $totalPajakOriginal = 0;
+                    $taxConditionOriginal = 'Tidak Ada Pajak';
+                    $taxTypeOriginal = null;
+
+                    foreach ($record->items as $item) {
+                        $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
+                        $hargaSatuan = $survey->harga ?? 0;
+                        $subtotal = $hargaSatuan * $item->kuantitas;
+                        $itemsOriginal[] = [
+                            'barang' => $item->nama_barang,
+                            'kuantitas' => $item->kuantitas,
+                            'harga' => $hargaSatuan,
+                            'subtotal' => $subtotal,
+                        ];
+                        $totalNilaiBarangOriginal += $subtotal;
+
+                        if ($survey) {
+                            $isTaxExclude = in_array($survey->kondisi_pajak, [
+                                'Pajak ditanggung Perusahaan (Exclude)',
+                                'Pajak ditanggung kita',
+                                'Pajak ditanggung BPRS'
+                            ]);
+
+                            if ($isTaxExclude) {
+                                $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                $taxConditionOriginal = 'Pajak ditanggung Perusahaan (Exclude)';
+                                if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
+                            } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
+                                $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                $taxConditionOriginal = 'Pajak ditanggung Vendor (Include)';
+                                if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
+                            }
+                        }
+                    }
+
+                    $totalBiayaOriginal = $totalNilaiBarangOriginal;
+                    if ($taxConditionOriginal === 'Pajak ditanggung Perusahaan (Exclude)') {
+                        $totalBiayaOriginal += $totalPajakOriginal;
+                    }
+
+                    $latestRevisi = $record->items
+                        ->flatMap->surveiHargas
+                        ->flatMap->revisiHargas
+                        ->sortByDesc('created_at')
+                        ->first();
+
+                    $isRevisi = !is_null($latestRevisi);
+                    $revisionDetails = null;
+                    $taxTypeFinal = $taxTypeOriginal;
+                    $taxConditionFinal = $taxConditionOriginal;
+
+                    if ($isRevisi) {
+                        $totalNilaiBarangFinal = $latestRevisi->harga_revisi;
+                        $totalPajakFinal = $latestRevisi->nominal_pajak;
+                        $totalFinal = $totalNilaiBarangFinal + $totalPajakFinal;
+                        $taxTypeFinal = $latestRevisi->jenis_pajak;
+                        $taxConditionFinal = $latestRevisi->kondisi_pajak;
+                        $revisionDetails = [
+                            'selisih_total' => $totalFinal - $totalBiayaOriginal,
+                            'alasan_revisi' => $latestRevisi->alasan_revisi,
+                            'tanggal_revisi' => Carbon::parse($latestRevisi->tanggal_revisi)->translatedFormat('d F Y'),
+                        ];
+                    } else {
+                        $totalNilaiBarangFinal = $totalNilaiBarangOriginal;
+                        $totalPajakFinal = $totalPajakOriginal;
+                        $totalFinal = $totalBiayaOriginal;
+                    }
+
+                    // Helper generate QR
+                    $generateQrCode = function ($user) use ($record) {
+                        if (!$user) return null;
+                        $url = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $user]);
+                        $qrCodeData = QrCode::format('png')->size(80)->margin(1)->generate($url);
+                        return 'data:image/png;base64,' . base64_encode($qrCodeData);
+                    };
+
+                    $direktur = $record->approverDirUtama ?? $record->approverDirOps;
+                    $direkturJabatan = $record->approverDirUtama ? 'Direktur Utama' : 'Direktur Operasional';
+
+                    $data = [
+                        'kode_pengajuan' => $record->kode_pengajuan,
+                        'tanggal_pengajuan' => $record->created_at->translatedFormat('d F Y'),
+                        'pemohon' => $record->pemohon->nama_user,
+                        'divisi' => $record->pemohon->divisi->nama_divisi,
+                        'items_original' => $itemsOriginal,
+                        'total_nilai_barang_original' => $totalNilaiBarangOriginal,
+                        'total_pajak_original' => $totalPajakOriginal,
+                        'tax_condition_original' => $taxConditionOriginal,
+                        'tax_type_original' => $taxTypeOriginal,
+                        'total_biaya_original' => $totalBiayaOriginal,
+                        'total_nilai_barang_final' => $totalNilaiBarangFinal,
+                        'total_pajak_final' => $totalPajakFinal,
+                        'tax_condition_final' => $taxConditionFinal,
+                        'tax_type_final' => $taxTypeFinal,
+                        'total_final' => $totalFinal,
+                        'is_revisi' => $isRevisi,
+                        'revision_details' => $revisionDetails,
+                        'payment_details' => [
+                            'vendor' => $finalVendor->nama_vendor,
+                            'metode_pembayaran' => $finalVendor->metode_pembayaran,
+                            'opsi_pembayaran' => $finalVendor->opsi_pembayaran,
+                            'nama_bank' => $finalVendor->nama_bank,
+                            'no_rekening' => $finalVendor->no_rekening,
+                            'nama_rekening' => $finalVendor->nama_rekening,
+                            'nominal_dp' => $finalVendor->nominal_dp,
+                            'tanggal_dp' => $finalVendor->tanggal_dp ? Carbon::parse($finalVendor->tanggal_dp)->translatedFormat('d F Y') : '-',
+                            'tanggal_dp_aktual' => $finalVendor->tanggal_dp_aktual ? Carbon::parse($finalVendor->tanggal_dp_aktual)->translatedFormat('d F Y') : null,
+                            'tanggal_pelunasan' => $finalVendor->tanggal_pelunasan ? Carbon::parse($finalVendor->tanggal_pelunasan)->translatedFormat('d F Y') : '-',
+                            'tanggal_pelunasan_aktual' => $finalVendor->tanggal_pelunasan_aktual ? Carbon::parse($finalVendor->tanggal_pelunasan_aktual)->translatedFormat('d F Y') : null,
+                        ],
+                        'kadivGaName' => $record->validatorBudgetOps?->nama_user ?? '(Kadiv Operasional)',
+                        'kadivGaQrCode' => $generateQrCode($record->validatorBudgetOps),
+                        'direkturName' => $direktur?->nama_user,
+                        'direkturJabatan' => $direkturJabatan,
+                        'direkturQrCode' => $generateQrCode($direktur),
+                        'disbursedByName' => $record->disbursedBy?->nama_user,
+                        'disbursedByQrCode' => $generateQrCode($record->disbursedBy),
+                        'is_paid' => !empty($finalVendor->bukti_pelunasan),
+                    ];
+
+                    $pdf = Pdf::loadView('documents.spm_template', $data);
+                    $fileName = 'SPM_' . str_replace('/', '_', $record->kode_pengajuan) . '.pdf';
+                    return response()->streamDownload(fn() => print($pdf->output()), $fileName);
+                }),
+
             Action::make('penyelesaian')
                 ->label('Penyelesaian')
                 ->color('success')
                 ->icon('heroicon-o-check-badge')
                 ->modalHeading('Form Penyelesaian Pengadaan')
-                ->modalWidth('2xl') // Modal bisa dibuat lebih lebar
+                ->modalWidth('2xl')
                 ->form(fn(Pengajuan $record): array => [
-                    // Menggunakan Repeater untuk tampilan yang lebih baik
                     Repeater::make('bukti_penyelesaian_list')
                         ->label('Daftar Bukti Penyelesaian')
-                        ->addActionLabel('Tambah Bukti Penyelesaian') // Tombol yang Anda inginkan
+                        ->addActionLabel('Tambah Bukti Penyelesaian')
                         ->minItems(1)
                         ->collapsible()
                         ->cloneable()

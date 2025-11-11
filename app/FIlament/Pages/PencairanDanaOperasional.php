@@ -3,24 +3,17 @@
 namespace App\Filament\Pages;
 
 use Carbon\Carbon;
-use Filament\Forms;
-use App\Models\User;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
-use Filament\Tables\Table;
-use App\Models\SurveiHarga;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\HtmlString;
 use Filament\Forms\Components\Grid;
 use Filament\Tables\Actions\Action;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Repeater;
-use Filament\Forms\Components\Textarea;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
@@ -28,7 +21,6 @@ use Illuminate\Support\Facades\Storage;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\BadgeColumn;
-use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\Placeholder;
@@ -181,7 +173,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                         'approverDirOps',
                         'approverDirUtama',
                     ]);
-
+                    // dd($record);
                     $formData = $record->toArray();
 
                     // 2. Menyiapkan nama-nama approver untuk ditampilkan di StandardDetailSections
@@ -305,9 +297,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                     RevisiTimelineSection::make(),
                 ]),
 
-            // =================================================================
-            // ACTION PEMBAYARAN DENGAN LOGIKA BARU YANG DINAMIS
-            // =================================================================
             Action::make('payment')
                 ->label('Pembayaran')
                 ->color('success')
@@ -350,7 +339,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                                 if (!$displayJenisPajak && $survey->jenis_pajak) {
                                     $displayJenisPajak = $survey->jenis_pajak;
                                 }
-                                // Ambil kondisi pajak dari item pertama yang punya kondisi selain "Tidak Ada Pajak"
                                 if ($kondisiPajakFinal === 'Tidak Ada Pajak' && $survey->kondisi_pajak !== 'Tidak Ada Pajak') {
                                     $kondisiPajakFinal = $survey->kondisi_pajak;
                                 }
@@ -358,7 +346,6 @@ class PencairanDanaOperasional extends Page implements HasTable
                         }
                     }
 
-                    // [PERBAIKAN] Logika baru untuk menentukan visibilitas field bukti pajak
                     $adaPajak = $kondisiPajakFinal !== 'Tidak Ada Pajak';
                     $pajakDitanggungKita = in_array($kondisiPajakFinal, ['Pajak ditanggung BPRS', 'Pajak ditanggung kita', 'Pajak ditanggung Perusahaan (Exclude)']);
 
@@ -591,10 +578,15 @@ class PencairanDanaOperasional extends Page implements HasTable
                 ->action(function (Pengajuan $record) {
                     $finalVendor = $record->vendorPembayaran()->where('is_final', true)->first();
                     if (!$finalVendor) {
-                        Notification::make()->title('Gagal Mencetak SPM')->body('Vendor final untuk pengajuan ini belum ditentukan.')->danger()->send();
+                        Notification::make()
+                            ->title('Gagal Mencetak SPM')
+                            ->body('Vendor final untuk pengajuan ini belum ditentukan.')
+                            ->danger()
+                            ->send();
                         return;
                     }
-                    $record->load('approverDirUtama', 'approverDirOps', 'approverKadivGa', 'disbursedBy');
+
+                    $record->load('approverDirUtama', 'approverDirOps', 'validatorBudgetOps', 'disbursedBy');
 
                     $itemsOriginal = [];
                     $totalNilaiBarangOriginal = 0;
@@ -615,7 +607,12 @@ class PencairanDanaOperasional extends Page implements HasTable
                         $totalNilaiBarangOriginal += $subtotal;
 
                         if ($survey) {
-                            $isTaxExclude = in_array($survey->kondisi_pajak, ['Pajak ditanggung Perusahaan (Exclude)', 'Pajak ditanggung kita', 'Pajak ditanggung BPRS']);
+                            $isTaxExclude = in_array($survey->kondisi_pajak, [
+                                'Pajak ditanggung Perusahaan (Exclude)',
+                                'Pajak ditanggung kita',
+                                'Pajak ditanggung BPRS'
+                            ]);
+
                             if ($isTaxExclude) {
                                 $totalPajakOriginal += $survey->nominal_pajak ?? 0;
                                 $taxConditionOriginal = 'Pajak ditanggung Perusahaan (Exclude)';
@@ -633,7 +630,12 @@ class PencairanDanaOperasional extends Page implements HasTable
                         $totalBiayaOriginal += $totalPajakOriginal;
                     }
 
-                    $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
+                    $latestRevisi = $record->items
+                        ->flatMap->surveiHargas
+                        ->flatMap->revisiHargas
+                        ->sortByDesc('created_at')
+                        ->first();
+
                     $isRevisi = !is_null($latestRevisi);
                     $revisionDetails = null;
                     $taxTypeFinal = $taxTypeOriginal;
@@ -656,7 +658,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                         $totalFinal = $totalBiayaOriginal;
                     }
 
-                    // [PERBAIKAN] Menggunakan helper function untuk generate QR Code
+                    // Helper generate QR
                     $generateQrCode = function ($user) use ($record) {
                         if (!$user) return null;
                         $url = URL::signedRoute('approval.verify', ['pengajuan' => $record, 'user' => $user]);
@@ -667,12 +669,13 @@ class PencairanDanaOperasional extends Page implements HasTable
                     $direktur = $record->approverDirUtama ?? $record->approverDirOps;
                     $direkturJabatan = $record->approverDirUtama ? 'Direktur Utama' : 'Direktur Operasional';
 
-
                     $data = [
                         'kode_pengajuan' => $record->kode_pengajuan,
                         'tanggal_pengajuan' => $record->created_at->translatedFormat('d F Y'),
                         'pemohon' => $record->pemohon->nama_user,
                         'divisi' => $record->pemohon->divisi->nama_divisi,
+                        'status_budget' => $record->status_budget,
+                        'catatan_budget' => $record->catatan_budget,
                         'items_original' => $itemsOriginal,
                         'total_nilai_barang_original' => $totalNilaiBarangOriginal,
                         'total_pajak_original' => $totalPajakOriginal,
@@ -699,12 +702,12 @@ class PencairanDanaOperasional extends Page implements HasTable
                             'tanggal_pelunasan' => $finalVendor->tanggal_pelunasan ? Carbon::parse($finalVendor->tanggal_pelunasan)->translatedFormat('d F Y') : '-',
                             'tanggal_pelunasan_aktual' => $finalVendor->tanggal_pelunasan_aktual ? Carbon::parse($finalVendor->tanggal_pelunasan_aktual)->translatedFormat('d F Y') : null,
                         ],
-                        'kadivGaName' => $record->approverKadivGa?->nama_user ?? '(Kadiv GA)',
+                        'kadivGaName' => $record->validatorBudgetOps?->nama_user ?? '(Kadiv Operasional)',
+                        'kadivGaQrCode' => $generateQrCode($record->validatorBudgetOps),
                         'direkturName' => $direktur?->nama_user,
                         'direkturJabatan' => $direkturJabatan,
-                        'disbursedByName' => $record->disbursedBy?->nama_user,
-                        'kadivGaQrCode' => $generateQrCode($record->approverKadivGa),
                         'direkturQrCode' => $generateQrCode($direktur),
+                        'disbursedByName' => $record->disbursedBy?->nama_user,
                         'disbursedByQrCode' => $generateQrCode($record->disbursedBy),
                         'is_paid' => !empty($finalVendor->bukti_pelunasan),
                     ];
@@ -713,6 +716,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                     $fileName = 'SPM_' . str_replace('/', '_', $record->kode_pengajuan) . '.pdf';
                     return response()->streamDownload(fn() => print($pdf->output()), $fileName);
                 })
+
             // ->visible(fn(Pengajuan $record): bool => $record->status !== Pengajuan::STATUS_SELESAI),
         ];
     }
