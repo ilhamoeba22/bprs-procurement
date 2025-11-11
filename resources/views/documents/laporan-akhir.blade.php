@@ -549,16 +549,22 @@
                     <td>: {!! nl2br(e(trim($pengajuan->catatan_revisi))) !!}</td>
                 </tr>
                 @endif
-                @if(!empty($pengajuan->catatan_budget))
-                <tr>
-                    <td class="label">Catatan Budget Control</td>
-                    <td>: {{ $pengajuan->catatan_budget }}</td>
-                </tr>
-                @endif
                 @if(!empty($pengajuan->kadiv_ga_catatan))
                 <tr>
                     <td class="label">Catatan Kadiv GA</td>
                     <td>: {{ $pengajuan->kadiv_ga_catatan }}</td>
+                </tr>
+                @endif
+                @if(!empty($pengajuan->kadiv_ops_catatan))
+                <tr>
+                    <td class="label">Catatan Kadiv Operasional</td>
+                    <td>: {{ $pengajuan->kadiv_ops_catatan }}</td>
+                </tr>
+                @endif
+                @if(!empty($pengajuan->catatan_budget))
+                <tr>
+                    <td class="label">Catatan Budget Control</td>
+                    <td>: {{ $pengajuan->catatan_budget }}</td>
                 </tr>
                 @endif
                 @php

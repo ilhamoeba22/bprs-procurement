@@ -35,7 +35,7 @@ class RekomendasiIT extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Rekomendasi IT)';
+        return 'Daftar Pengajuan - Rekomendasi IT';
     }
 
     public static function canAccess(): bool

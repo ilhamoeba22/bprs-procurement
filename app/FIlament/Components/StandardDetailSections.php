@@ -69,6 +69,7 @@ class StandardDetailSections
             ])
                 ->visible(fn(Pengajuan $record) => !is_null($record->ga_surveyed_by))
                 ->collapsible()->collapsed(),
+
             Section::make('Rincian Estimasi Biaya')
                 ->schema([
                     Repeater::make('estimasi_biaya.details')
@@ -96,36 +97,52 @@ class StandardDetailSections
                 ])
                 ->visible(fn(Pengajuan $record) => !is_null($record->ga_surveyed_by))
                 ->collapsible()->collapsed(),
+
+            Section::make('Validasi Kepala Divisi GA')->schema([
+                Grid::make(2)->schema([
+                    TextInput::make('kadiv_ga_decision_type')->label('Keputusan Validasi')->disabled(),
+                    TextInput::make('kadiv_ga_approved_by_name')->label('Divalidasi Oleh')->disabled(),
+                ]),
+                Textarea::make('kadiv_ga_catatan')->label('Catatan Validasi')->disabled(),
+            ])->visible(fn(Pengajuan $record) => !is_null($record->kadiv_ga_approved_by))->collapsible()->collapsed(),
+
             Section::make('Budget Control')
                 ->schema([
-                    Grid::make(3)->schema([
+                    Grid::make(2)->schema([
                         TextInput::make('status_budget')
                             ->label('Status Budget')
                             ->disabled()
                             ->default(fn($get) => $get('status_budget') ?? 'Belum di-review'),
-                        Textarea::make('catatan_budget')
-                            ->label('Catatan Budget')
+
+                        TextInput::make('budget_approved_by_name')
+                            ->label('Direview Oleh')
                             ->disabled()
-                            ->default(fn($get) => $get('catatan_budget') ?? 'Tidak ada catatan'),
-                        TextInput::make('kadiv_ops_budget_approved_by_name')
-                            ->label('Divalidasi Oleh')
-                            ->disabled()
-                            ->default(fn($get) => $get('kadiv_ops_budget_approved_by_name') ?? 'Belum divalidasi'),
+                            ->default(fn($get) => $get('budget_approved_by_name') ?? 'Belum direview'),
+
+                        // TextInput::make('kadiv_ops_budget_approved_by_name')
+                        //     ->label('Divalidasi Oleh')
+                        //     ->disabled()
+                        //     ->default(fn($get) => $get('kadiv_ops_budget_approved_by_name') ?? 'Belum divalidasi'),
                     ]),
+                    Textarea::make('catatan_budget')
+                        ->label('Catatan Budget')
+                        ->disabled()
+                        ->default(fn($get) => $get('catatan_budget') ?? 'Tidak ada catatan')
+                        ->columnSpanFull(),
                 ])->collapsible()->collapsed()
                 ->visible(fn(Pengajuan $record) => !is_null($record->budget_approved_by)),
 
             Section::make('Final Approve')
                 ->schema([
                     Grid::make(2)->schema([
-                        TextInput::make('kadiv_ga_decision_type')
-                            ->label('Keputusan Kadiv GA')
+                        TextInput::make('kadiv_ops_decision_type')
+                            ->label('Keputusan Kadiv Operasional')
                             ->disabled()
-                            ->default(fn($get) => $get('kadiv_ga_decision_type') ?? 'Belum Ada Keputusan'),
-                        Textarea::make('kadiv_ga_catatan')
-                            ->label('Catatan Kadiv GA')
+                            ->default(fn($get) => $get('kadiv_ops_decision_type') ?? 'Belum Ada Keputusan'),
+                        Textarea::make('kadiv_ops_catatan')
+                            ->label('Catatan Kadiv Operasional')
                             ->disabled()
-                            ->default(fn($get) => $get('kadiv_ga_catatan') ?? 'Tidak ada catatan'),
+                            ->default(fn($get) => $get('kadiv_ops_catatan') ?? 'Tidak ada catatan'),
                     ]),
                     Grid::make(2)->schema([
                         TextInput::make('direktur_operasional_decision_type')
@@ -148,7 +165,7 @@ class StandardDetailSections
                             ->default(fn($get) => $get('direktur_utama_catatan') ?? 'Tidak ada catatan'),
                     ])->visible(fn(Pengajuan $record) => !is_null($record->direktur_utama_approved_by)),
                 ])
-                ->visible(fn(Pengajuan $record) => !is_null($record->kadiv_ga_approved_by))
+                ->visible(fn(Pengajuan $record) => !is_null($record->kadiv_ops_catatan))
                 ->collapsible()->collapsed(),
         ];
     }

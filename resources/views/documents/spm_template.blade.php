@@ -229,6 +229,19 @@
                 </div>
                 @endif
             </div>
+            <!-- Tambahan baru: Status & Catatan Budget -->
+            <table class="details-table">
+                <tr>
+                    <th style="width: 25%;">Status Budget</th>
+                    <td>{{ $status_budget ?? '-' }}</td>
+                </tr>
+                <tr>
+                    <th>Catatan Budget</th>
+                    <td>{{ $catatan_budget ?? '-' }}</td>
+                </tr>
+            </table>
+            <!-- Akhir tambahan -->
+
             <table class="details-table payment-details-table">
                 <tr style="background-color:#e0e0e0;">
                     <td style="width: 30%;"><b>TOTAL PERINTAH BAYAR (FINAL)</b></td>
@@ -333,6 +346,7 @@
                         {{-- [PERUBAHAN] Tanda tangan Pembayar --}}
                         @if($is_paid && $disbursedByName)
                         <p style="margin-bottom:2px;">Dibayarkan oleh,</p>
+                        <p style="margin-bottom:2px;">Staff Accounting</p>
                         <br>
                         @if(!empty($disbursedByQrCode))
                         <img src="{{ $disbursedByQrCode }}" alt="QR Code Verifikasi" style="height: 80px; width: 80px;">
@@ -340,7 +354,6 @@
                         <br><br><br>
                         @endif
                         <p style="margin-top:5px;"><b><u>{{ $disbursedByName }}</u></b></p>
-                        <p style="margin-top:0px;">Staff Accounting</p>
                         @endif
                     </td>
                     <td style="width:33%; text-align:center; vertical-align: top;">
@@ -358,7 +371,7 @@
                     </td>
                     <td style="width:33%; text-align:center; vertical-align: top;">
                         <p style="margin-bottom:2px;">Menyetujui,</p>
-                        <p style="margin-bottom:2px;">Kepala Divisi GA</p>
+                        <p style="margin-bottom:2px;">Kepala Divisi Operasional</p>
                         <br>
                         @if(!empty($kadivGaQrCode))
                         <img src="{{ $kadivGaQrCode }}" alt="QR Code Verifikasi">

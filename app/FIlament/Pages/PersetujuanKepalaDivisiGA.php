@@ -38,7 +38,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Approval Kadiv GA)';
+        return 'Daftar Pengajuan - Persetujuan Kadiv GA';
     }
 
     public static function canAccess(): bool
@@ -49,7 +49,7 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
-        $query = Pengajuan::query()->with(['pemohon.divisi', 'items.surveiHargas.revisiHargas', 'vendorPembayaran']);
+        $query = Pengajuan::query()->with(['pemohon.divisi', 'items.surveiHargas.revisiHargas']);
 
         $statusesForAction = [
             Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA,
@@ -59,15 +59,13 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
         if ($user && !$user->hasRole('Super Admin')) {
             $query->where(function (Builder $q) use ($user, $statusesForAction) {
                 $q->whereIn('status', $statusesForAction)
-                    ->orWhere(function (Builder $subq) use ($user) {
-                        $subq->where('status', Pengajuan::STATUS_MENUNGGU_PELUNASAN)
-                            ->whereNotNull('kadiv_ga_approved_by')
-                            ->where('kadiv_ga_approved_by', $user->id_user);
-                    })->orWhere('kadiv_ga_approved_by', $user->id_user);
+                    ->orWhere('kadiv_ga_approved_by', $user->id_user);
             });
         } else {
             $query->whereIn('status', array_merge($statusesForAction, [
-                Pengajuan::STATUS_MENUNGGU_PELUNASAN,
+                Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
+                Pengajuan::STATUS_DITOLAK_KADIV_GA,
+                // Tambahkan status lain setelah tahap ini jika perlu dilihat oleh Super Admin
             ]))->orWhereNotNull('kadiv_ga_approved_by');
         }
 
@@ -89,6 +87,25 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                     if ($latestRevisi) {
                         return $latestRevisi->harga_revisi + $latestRevisi->nominal_pajak;
                     }
+                    if (!$record->total_nilai) {
+                        $items = $record->items;
+                        $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
+                        $vendorTotals = [];
+                        foreach ($groupedSurveys as $namaVendor => $surveys) {
+                            $allItemsCovered = $items->every(fn($item) => $surveys->where('id_item', $item->id_item)->isNotEmpty());
+                            if (!$allItemsCovered) continue;
+                            $vendorTotal = 0;
+                            foreach ($items as $item) {
+                                $survey = $surveys->where('id_item', $item->id_item)->first();
+                                if (!$survey) continue;
+                                $itemCost = $survey->harga * $item->kuantitas;
+                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)' ? ($survey->nominal_pajak ?? 0) : 0;
+                                $vendorTotal += ($itemCost + $taxCost);
+                            }
+                            $vendorTotals[$namaVendor] = $vendorTotal;
+                        }
+                        return empty($vendorTotals) ? 0 : min($vendorTotals);
+                    }
                     return $record->total_nilai;
                 })
                 ->icon(function (Pengajuan $record): ?string {
@@ -98,27 +115,6 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                 ->color(function (Pengajuan $record): ?string {
                     $hasRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->isNotEmpty();
                     return $hasRevisi ? 'warning' : null;
-                })
-                ->description(function (Pengajuan $record): ?string {
-                    $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
-                    if ($latestRevisi) {
-                        $hargaAwalBarang = $latestRevisi->harga_awal;
-                        $vendorName = $latestRevisi->surveiHarga?->nama_vendor;
-                        if (!$vendorName) return 'Nilai Awal: -';
-                        $totalPajakAwal = 0;
-                        foreach ($record->items as $item) {
-                            $survey = $item->surveiHargas
-                                ->where('nama_vendor', $vendorName)
-                                ->where('kondisi_pajak', 'Pajak ditanggung BPRS')
-                                ->first();
-                            if ($survey) {
-                                $totalPajakAwal += $survey->nominal_pajak;
-                            }
-                        }
-                        $totalBiayaAwal = $hargaAwalBarang + $totalPajakAwal;
-                        return 'Nilai Awal: ' . number_format($totalBiayaAwal, 0, ',', '.');
-                    }
-                    return null;
                 }),
 
             BadgeColumn::make('status')
@@ -131,17 +127,15 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                     if ($record->kadiv_ga_approved_by === Auth::id()) {
                         return 'Sudah Diproses';
                     }
-
                     return match ($record->status) {
                         Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA,
                         Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI
                         => 'Menunggu Aksi',
-                        Pengajuan::STATUS_SELESAI => 'Pengajuan Selesai',
                         default => 'Proses Lanjut',
                     };
                 })
                 ->color(fn(string $state): string => match ($state) {
-                    'Sudah Diproses', 'Pengajuan Selesai' => 'success',
+                    'Sudah Diproses' => 'success',
                     'Menunggu Aksi' => 'warning',
                     default => 'gray',
                 }),
@@ -331,118 +325,25 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                     RevisiTimelineSection::make(),
                 ]),
 
-
-
-
-            Action::make('process_decision')
-                ->label('Keputusan')
+            Action::make('process_ga_approval')
+                ->label('Proses Persetujuan')
                 ->color('primary')
                 ->icon('heroicon-o-check-circle')
                 ->form([
-                    ...$this->getSummarySchema(),
-                    Section::make('Form Keputusan')->schema([
-                        Radio::make('keputusan_final')
-                            ->label('Persetujuan Final')
-                            ->options(['Setuju' => 'Setuju', 'Tolak' => 'Tolak'])
-                            ->required(),
+                    Section::make('Validasi Hasil Survei Harga')->schema([
+                        Radio::make('keputusan')
+                            ->label('Keputusan')
+                            ->options(['Setuju' => 'Setuju & Teruskan ke Budgeting', 'Tolak' => 'Tolak'])
+                            ->required()
+                            ->live(),
                         Textarea::make('kadiv_ga_catatan')
-                            ->label('Catatan Keputusan (Wajib diisi)')
-                            ->required(),
+                            ->label('Catatan (Wajib diisi jika ditolak)')
+                            ->required(fn($get) => $get('keputusan') === 'Tolak'),
                     ]),
                 ])
-                ->mountUsing(function (Form $form, Pengajuan $record): void {
-                    $formData = $record->toArray();
-                    $getScenarioDetails = function ($items) use ($record) {
-                        $details = [];
-                        $totalCost = 0;
-                        $nominalDp = 0;
-                        $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
-                        if ($groupedSurveys->isEmpty()) {
-                            return [
-                                'details' => [],
-                                'total' => 'Rp 0',
-                                'nominal_dp' => 'Tidak ada DP'
-                            ];
-                        }
-
-                        $vendorTotals = [];
-                        foreach ($groupedSurveys as $namaVendor => $surveys) {
-                            $vendorTotal = 0;
-                            $allItemsCovered = true;
-                            foreach ($items as $item) {
-                                $survey = $surveys->where('id_item', $item->id_item)->first();
-                                if (!$survey) {
-                                    $allItemsCovered = false;
-                                    break;
-                                }
-                                $itemCost = $survey->harga * $item->kuantitas;
-                                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)' ? ($survey->nominal_pajak ?? 0) : 0;
-                                $vendorTotal += ($itemCost + $taxCost);
-                            }
-                            if ($allItemsCovered) {
-                                $vendorTotals[$namaVendor] = $vendorTotal;
-                            }
-                        }
-
-                        if (empty($vendorTotals)) {
-                            return [
-                                'details' => [],
-                                'total' => 'Rp 0',
-                                'nominal_dp' => 'Tidak ada DP'
-                            ];
-                        }
-
-                        $cheapestVendor = array_key_first($vendorTotals);
-                        $minTotal = min($vendorTotals);
-                        foreach ($vendorTotals as $vendor => $total) {
-                            if ($total === $minTotal) {
-                                $cheapestVendor = $vendor;
-                                break;
-                            }
-                        }
-
-                        $cheapestSurveys = $groupedSurveys[$cheapestVendor] ?? [];
-                        foreach ($items as $item) {
-                            $survey = $cheapestSurveys->where('id_item', $item->id_item)->first();
-                            if (!$survey) continue;
-                            $itemCost = $survey->harga * $item->kuantitas;
-                            $taxInfo = 'Tidak ada pajak';
-                            $taxCost = 0;
-                            if ($survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)') {
-                                $taxCost = $survey->nominal_pajak ?? 0;
-                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Rp ' . number_format($taxCost, 0, ',', '.');
-                            } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
-                                $taxInfo = ($survey->jenis_pajak ?? 'Pajak') . ': Included';
-                            }
-                            $details[] = [
-                                'nama_barang' => $item->nama_barang . " (x{$item->kuantitas})",
-                                'tipe_survei' => $survey->tipe_survei,
-                                'harga_vendor' => 'Rp ' . number_format($itemCost, 0, ',', '.'),
-                                'pajak_info' => $taxInfo,
-                            ];
-                            $totalCost += ($itemCost + $taxCost);
-                        }
-
-                        $vendorPembayaran = $record->vendorPembayaran->where('nama_vendor', $cheapestVendor)->first();
-                        if ($vendorPembayaran && $vendorPembayaran->nominal_dp > 0) {
-                            $nominalDp = $vendorPembayaran->nominal_dp;
-                        }
-
-                        return [
-                            'details' => $details,
-                            'total' => 'Rp ' . number_format($totalCost, 0, ',', '.'),
-                            'nominal_dp' => $nominalDp > 0 ? 'Rp ' . number_format($nominalDp, 0, ',', '.') : 'Tidak ada DP'
-                        ];
-                    };
-                    $formData['estimasi_biaya'] = $getScenarioDetails($record->items);
-                    $form->fill($formData);
-                })
                 ->action(function (array $data, Pengajuan $record) {
                     $user = Auth::user();
-                    $catatan = $record->catatan_revisi ?? '';
-                    $catatan .= "\n\n[Keputusan oleh Kadiv GA: {$user->nama_user} pada " . now()->format('d-m-Y H:i') . "]\n" . $data['kadiv_ga_catatan'];
-
-                    if ($data['keputusan_final'] === 'Tolak') {
+                    if ($data['keputusan'] === 'Tolak') {
                         $record->update([
                             'status' => Pengajuan::STATUS_DITOLAK_KADIV_GA,
                             'kadiv_ga_decision_type' => 'Tolak',
@@ -450,106 +351,42 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                             'kadiv_ga_approved_by' => $user->id_user,
                             'kadiv_ga_approved_at' => now(),
                         ]);
-                        Notification::make()->title('Pengajuan ditolak')->danger()->send();
+                        Notification::make()->title('Pengajuan Ditolak')->body('Hasil survei harga ditolak oleh Kepala Divisi GA.')->danger()->send();
                         return;
-                    }
-
-                    $items = $record->items;
-                    $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
-                    $vendorTotals = [];
-                    foreach ($groupedSurveys as $namaVendor => $surveys) {
-                        $allItemsCovered = $items->every(fn($item) => $surveys->where('id_item', $item->id_item)->isNotEmpty());
-                        if (!$allItemsCovered) continue;
-                        $vendorTotal = 0;
-                        foreach ($items as $item) {
-                            $survey = $surveys->where('id_item', $item->id_item)->first();
-                            $itemCost = $survey->harga * $item->kuantitas;
-                            $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung BPRS' ? ($survey->nominal_pajak ?? 0) : 0;
-                            $vendorTotal += ($itemCost + $taxCost);
-                        }
-                        $vendorTotals[$namaVendor] = $vendorTotal;
-                    }
-                    if (empty($vendorTotals)) {
-                        Notification::make()->title('Aksi Gagal')->body('Tidak ada vendor yang dapat memenuhi semua item.')->danger()->send();
-                        return;
-                    }
-                    $nilaiFinal = min($vendorTotals);
-                    $vendorFinalName = array_search($nilaiFinal, $vendorTotals);
-
-                    VendorPembayaran::where('id_pengajuan', $record->id_pengajuan)->update(['is_final' => false]);
-                    VendorPembayaran::updateOrCreate(
-                        ['id_pengajuan' => $record->id_pengajuan, 'nama_vendor' => $vendorFinalName],
-                        ['is_final' => true]
-                    );
-
-                    $budgetFinal = $record->status_budget;
-                    $vendorPembayaranFinal = $record->vendorPembayaran()->where('nama_vendor', $vendorFinalName)->first();
-                    $opsiPembayaranFinal = $vendorPembayaranFinal?->opsi_pembayaran;
-                    $newStatus = '';
-
-                    if ($nilaiFinal > 100000000) {
-                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA;
-                    } elseif (($nilaiFinal > 5000000 && $nilaiFinal <= 100000000) || $budgetFinal === 'Budget Habis' || $budgetFinal === 'Budget Tidak Ada di RBB') {
-                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL;
-                    } else {
-                        if ($opsiPembayaranFinal === 'Bisa DP') {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA;
-                        } elseif ($opsiPembayaranFinal === 'Langsung Lunas') {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
-                        } else {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA;
-                        }
                     }
 
                     $record->update([
-                        'total_nilai' => $nilaiFinal,
+                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
                         'kadiv_ga_decision_type' => 'Setuju',
                         'kadiv_ga_catatan' => $data['kadiv_ga_catatan'],
-                        'status' => $newStatus,
                         'kadiv_ga_approved_by' => $user->id_user,
                         'kadiv_ga_approved_at' => now(),
                     ]);
 
-                    Notification::make()->title('Keputusan berhasil diproses')->success()->send();
+                    Notification::make()->title('Survei Disetujui')->body('Pengajuan diteruskan ke Tim Budgeting untuk review.')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA),
 
-            Action::make('process_revisi_decision')
-                ->label('Keputusan (Revisi)')
+
+            Action::make('process_ga_revisi_approval')
+                ->label('Proses Persetujuan (Revisi)')
                 ->color('warning')
                 ->icon('heroicon-o-arrow-path')
                 ->form([
-                    ...$this->getSummarySchema(), // <-- Menambahkan section ringkasan
-                    Section::make('Form Keputusan Revisi')->schema([
+                    Section::make('Validasi Hasil Survei Harga (Revisi)')->schema([
                         Radio::make('revisi_kadiv_ga_decision_type')
-                            ->label('Persetujuan Final Revisi')
-                            ->options(['Disetujui' => 'Setujui Revisi', 'Ditolak' => 'Tolak Revisi'])
+                            ->label('Keputusan Revisi')
+                            ->options(['Disetujui' => 'Setujui Revisi & Teruskan ke Budgeting', 'Ditolak' => 'Tolak Revisi'])
                             ->required(),
                         Textarea::make('revisi_kadiv_ga_catatan')
-                            ->label('Catatan Keputusan (Wajib diisi)')
-                            ->required(),
+                            ->label('Catatan Keputusan (Wajib diisi jika ditolak)')
+                            ->required(fn($get) => $get('revisi_kadiv_ga_decision_type') === 'Ditolak'),
                     ]),
                 ])
-                ->mountUsing(function (Form $form, Pengajuan $record): void {
-                    $formData = $record->toArray();
-                    $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
-                    if ($latestRevisi) {
-                        $totalCost = $latestRevisi->harga_revisi + $latestRevisi->nominal_pajak;
-                        $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
-                        $nominalDp = $finalVendor?->nominal_dp ?? 0;
-
-                        $formData['estimasi_biaya'] = [
-                            'total' => 'Rp ' . number_format($totalCost, 0, ',', '.'),
-                            'nominal_dp' => $nominalDp > 0 ? 'Rp ' . number_format($nominalDp, 0, ',', '.') : 'Tidak ada DP',
-                        ];
-                        $formData['status_budget'] = $latestRevisi->revisi_budget_status_pengadaan;
-                        $formData['catatan_budget'] = $latestRevisi->revisi_budget_catatan_pengadaan;
-                    }
-                    $form->fill($formData);
-                })
                 ->action(function (array $data, Pengajuan $record) {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
                     if (!$latestRevisi) {
+                        Notification::make()->title('Error')->body('Data revisi aktif tidak ditemukan.')->danger()->send();
                         return;
                     }
 
@@ -564,36 +401,16 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                             'status' => Pengajuan::STATUS_DITOLAK_KADIV_GA,
                             'kadiv_ga_approved_at' => now(),
                         ]);
-                        Notification::make()->title('Revisi ditolak')->danger()->send();
+                        Notification::make()->title('Revisi Ditolak')->danger()->send();
                         return;
                     }
 
-                    $nilaiFinalBaru = $latestRevisi->harga_revisi + $latestRevisi->nominal_pajak;
-                    $budgetFinalRevisi = $latestRevisi->revisi_budget_status_pengadaan;
-                    $newStatus = '';
-
-                    if ($nilaiFinalBaru > 100000000) {
-                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI;
-                    } elseif (($nilaiFinalBaru > 5000000 && $nilaiFinalBaru <= 100000000) || $budgetFinalRevisi === 'Budget Habis' || $budgetFinalRevisi === 'Budget Tidak Ada di RBB') {
-                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI;
-                    } else {
-                        $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
-                        if ($finalVendor && $finalVendor->opsi_pembayaran === 'Bisa DP' && !empty($finalVendor->bukti_dp)) {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
-                        } elseif ($finalVendor && $finalVendor->opsi_pembayaran === 'Bisa DP') {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA_REVISI;
-                        } else {
-                            $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
-                        }
-                    }
-
                     $record->update([
-                        'total_nilai' => $nilaiFinalBaru,
-                        'status' => $newStatus,
+                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
                         'kadiv_ga_approved_at' => now(),
                     ]);
 
-                    Notification::make()->title('Revisi berhasil disetujui')->success()->send();
+                    Notification::make()->title('Revisi Disetujui')->body('Pengajuan revisi diteruskan ke Tim Budgeting.')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => trim($record->status) === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI),
 
@@ -601,19 +418,19 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                 ->label('Bukti Penawaran')
                 ->icon('heroicon-o-arrow-down-tray')
                 ->color('success')
-
                 ->action(function (Pengajuan $record) {
                     $record->loadMissing('items.surveiHargas');
 
                     $filePath = $record->items
                         ->flatMap->surveiHargas
+                        ->whereNotNull('bukti_path')
                         ->pluck('bukti_path')
                         ->first();
 
                     if (!$filePath) {
                         Notification::make()
                             ->title('Tidak Ada Bukti')
-                            ->body('Belum ada file bukti penawaran vendor yang diupload.')
+                            ->body('Belum ada file bukti penawaran vendor yang diunggah.')
                             ->warning()
                             ->send();
                         return;
@@ -628,7 +445,13 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                         return;
                     }
 
-                    return response()->download(Storage::disk('private')->path($filePath));
+                    $kodePengajuan = $record->kode_pengajuan ?? 'TANPA_KODE';
+                    $kodePengajuan = str_replace(['/', '\\'], '-', $kodePengajuan);
+
+                    $ext = pathinfo($filePath, PATHINFO_EXTENSION);
+                    $namaFile = 'BP_' . $kodePengajuan . '.' . $ext;
+
+                    return response()->download(Storage::disk('private')->path($filePath), $namaFile);
                 }),
         ];
     }

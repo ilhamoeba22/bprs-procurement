@@ -5,8 +5,12 @@ namespace App\Filament\Pages;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
 use App\Models\Pengajuan;
+use App\Models\VendorPembayaran;
 use Filament\Tables\Actions\Action;
+use Filament\Forms\Components\Radio;
 use Illuminate\Support\Facades\Auth;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Textarea;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Contracts\HasTable;
@@ -23,12 +27,12 @@ class PersetujuanKadivOperasional extends Page implements HasTable
 
     protected static ?string $navigationIcon = 'heroicon-o-shield-check';
     protected static string $view = 'filament.pages.persetujuan-kadiv-operasional';
-    protected static ?string $navigationLabel = 'Validasi Budget (Kadiv Ops)';
+    protected static ?string $navigationLabel = 'Persetujuan Kadiv Operasional';
     protected static ?int $navigationSort = 8;
 
     public function getTitle(): string
     {
-        return 'Daftar Pengajuan (Validasi Budget Kadiv Operasional)';
+        return 'Daftar Pengajuan - Persetujuan Kadiv Operasional';
     }
 
     public static function canAccess(): bool
@@ -95,7 +99,7 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                     if ($latestRevisi) {
                         $hargaAwalBarang = $latestRevisi->harga_awal;
                         $vendorName = $latestRevisi->surveiHarga?->nama_vendor;
-                        if (!$vendorName) return 'Nilai Awal: -'; // Fallback jika vendor tidak ditemukan
+                        if (!$vendorName) return 'Nilai Awal: -';
                         $totalPajakAwal = 0;
                         foreach ($record->items as $item) {
                             $survey = $item->surveiHargas
@@ -298,46 +302,211 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                 ]),
 
 
-            Action::make('confirm_budget_validation')
-                ->label('Validasi Budget')
+            Action::make('process_final_decision')
+                ->label('Buat Keputusan Final')
                 ->color('primary')
                 ->icon('heroicon-o-check-circle')
-                ->requiresConfirmation()
-                ->action(function (Pengajuan $record) {
+                ->form([
+                    Section::make('Form Keputusan Akhir')->schema([
+                        Radio::make('keputusan_final')
+                            ->label('Persetujuan Final')
+                            ->options(['Setuju' => 'Setuju', 'Tolak' => 'Tolak'])
+                            ->required()->live(),
+                        Textarea::make('catatan_final')
+                            ->label('Catatan Keputusan (Wajib diisi)')
+                            ->required(),
+                    ]),
+                ])
+                ->action(function (array $data, Pengajuan $record) {
+                    $user = Auth::user();
+
+                    // Jika ditolak
+                    if ($data['keputusan_final'] === 'Tolak') {
+                        $record->update([
+                            'status' => Pengajuan::STATUS_DITOLAK_KADIV_OPS,
+                            'kadiv_ops_decision_type' => 'Tolak',
+                            'kadiv_ops_catatan' => $data['catatan_final'],
+                            'kadiv_ops_budget_approved_by' => $user->id_user,
+                            'kadiv_ops_budget_approved_at' => now(),
+                        ]);
+                        Notification::make()->title('Pengajuan ditolak')->danger()->send();
+                        return;
+                    }
+
+                    // Ambil data scenario vendor termurah
+                    $scenario = $this->getScenarioDetails($record);
+                    if (!$scenario) {
+                        Notification::make()->title('Aksi Gagal')
+                            ->body('Tidak ada vendor yang dapat memenuhi semua item.')
+                            ->danger()->send();
+                        return;
+                    }
+
+                    $nilaiFinal = $scenario['total_cost_raw'];
+                    $vendorFinalName = $scenario['cheapest_vendor_name'];
+
+                    // Tandai vendor final
+                    VendorPembayaran::where('id_pengajuan', $record->id_pengajuan)->update(['is_final' => false]);
+                    VendorPembayaran::where('id_pengajuan', $record->id_pengajuan)
+                        ->where('nama_vendor', $vendorFinalName)
+                        ->update(['is_final' => true]);
+
+                    // Ambil data vendor final
+                    $vendorPembayaranFinal = $record->vendorPembayaran()->where('is_final', true)->first();
+                    $opsiPembayaranFinal = $vendorPembayaranFinal?->opsi_pembayaran;
+                    $budgetStatus = $record->status_budget;
+                    $newStatus = '';
+
+                    // 🔹 Logika Routing Baru (mengikuti Kadiv GA)
+                    if ($nilaiFinal > 100000000) {
+                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA;
+                    } elseif (($nilaiFinal > 5000000 && $nilaiFinal <= 100000000)
+                        || $budgetStatus === 'Budget Habis'
+                        || $budgetStatus === 'Budget Tidak Ada di RBB'
+                    ) {
+                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL;
+                    } else {
+                        if ($opsiPembayaranFinal === 'Bisa DP') {
+                            $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA;
+                        } else {
+                            $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
+                        }
+                    }
+
+                    // Update data pengajuan
                     $record->update([
-                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA,
-                        'kadiv_ops_budget_approved_by' => Auth::id(),
-                        'kadiv_ops_budget_approved_at' => now(), // <-- BARIS DITAMBAHKAN
+                        'total_nilai' => $nilaiFinal,
+                        'kadiv_ops_decision_type' => 'Setuju',
+                        'kadiv_ops_catatan' => $data['catatan_final'],
+                        'status' => $newStatus,
+                        'kadiv_ops_budget_approved_by' => $user->id_user,
+                        'kadiv_ops_budget_approved_at' => now(),
                     ]);
-                    Notification::make()->title('Validasi budget telah dikonfirmasi.')->success()->send();
+
+                    Notification::make()->title('Keputusan berhasil diproses')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => $record->status === Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET),
 
-            Action::make('confirm_revisi_budget_validation')
-                ->label('Validasi Budget (Revisi)')
+            Action::make('process_revisi_final_decision')
+                ->label('Keputusan (Revisi)')
                 ->color('warning')
                 ->icon('heroicon-o-arrow-path')
-                ->requiresConfirmation()
-                ->action(function (Pengajuan $record) {
+                ->form([
+                    Section::make('Form Keputusan Revisi')->schema([
+                        Radio::make('revisi_kadiv_ops_decision_type')
+                            ->label('Persetujuan Final Revisi')
+                            ->options(['Disetujui' => 'Setujui Revisi', 'Ditolak' => 'Tolak Revisi'])
+                            ->required(),
+                        Textarea::make('revisi_kadiv_ops_catatan')
+                            ->label('Catatan Keputusan (Wajib diisi)')
+                            ->required(),
+                    ]),
+                ])
+                ->action(function (array $data, Pengajuan $record) {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
                     if (!$latestRevisi) {
-                        Notification::make()->title('Error')->body('Data revisi aktif tidak ditemukan.')->danger()->send();
+                        Notification::make()->title('Tidak ada data revisi ditemukan')->danger()->send();
                         return;
                     }
 
                     $latestRevisi->update([
-                        'revisi_budget_validated_by' => Auth::id(),
-                        'revisi_budget_validated_at' => now(),
+                        'revisi_kadiv_ops_decision_type' => $data['revisi_kadiv_ops_decision_type'],
+                        'revisi_kadiv_ops_catatan' => $data['revisi_kadiv_ops_catatan'],
+                        'revisi_kadiv_ops_approved_by' => Auth::id(),
                     ]);
+
+                    if ($data['revisi_kadiv_ops_decision_type'] === 'Ditolak') {
+                        $record->update([
+                            'status' => Pengajuan::STATUS_DITOLAK_KADIV_OPS,
+                            'kadiv_ops_budget_approved_at' => now(),
+                        ]);
+                        Notification::make()->title('Revisi ditolak')->danger()->send();
+                        return;
+                    }
+
+                    $nilaiFinalBaru = $latestRevisi->harga_revisi + $latestRevisi->nominal_pajak;
+                    $budgetFinalRevisi = $latestRevisi->revisi_budget_status_pengadaan;
+                    $newStatus = '';
+
+                    // 🔹 Logika Routing Baru (versi revisi)
+                    if ($nilaiFinalBaru > 100000000) {
+                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI;
+                    } elseif (($nilaiFinalBaru > 5000000 && $nilaiFinalBaru <= 100000000)
+                        || $budgetFinalRevisi === 'Budget Habis'
+                        || $budgetFinalRevisi === 'Budget Tidak Ada di RBB'
+                    ) {
+                        $newStatus = Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI;
+                    } else {
+                        $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
+                        if ($finalVendor && $finalVendor->opsi_pembayaran === 'Bisa DP' && !empty($finalVendor->bukti_dp)) {
+                            $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
+                        } elseif ($finalVendor && $finalVendor->opsi_pembayaran === 'Bisa DP') {
+                            $newStatus = Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA_REVISI;
+                        } else {
+                            $newStatus = Pengajuan::STATUS_MENUNGGU_PELUNASAN;
+                        }
+                    }
 
                     $record->update([
-                        'status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI,
-                        'kadiv_ops_budget_approved_at' => now(), // <-- BARIS DITAMBAHKAN
+                        'total_nilai' => $nilaiFinalBaru,
+                        'status' => $newStatus,
+                        'kadiv_ops_budget_approved_at' => now(),
                     ]);
 
-                    Notification::make()->title('Validasi budget revisi telah dikonfirmasi.')->success()->send();
+                    Notification::make()->title('Revisi berhasil disetujui')->success()->send();
                 })
                 ->visible(fn(Pengajuan $record) => trim($record->status) === Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS),
         ];
+    }
+
+    // Helper functions to keep code clean
+    private function getScenarioDetails(Pengajuan $record): ?array
+    {
+        $record->loadMissing(['items.surveiHargas', 'vendorPembayaran']);
+        $items = $record->items;
+        $groupedSurveys = $items->flatMap->surveiHargas->groupBy('nama_vendor');
+        if ($groupedSurveys->isEmpty()) return null;
+
+        $vendorTotals = [];
+        foreach ($groupedSurveys as $namaVendor => $surveys) {
+            $allItemsCovered = $items->every(fn($item) => $surveys->where('id_item', $item->id_item)->isNotEmpty());
+            if (!$allItemsCovered) continue;
+
+            $vendorTotal = 0;
+            foreach ($items as $item) {
+                $survey = $surveys->where('id_item', $item->id_item)->first();
+                if (!$survey) continue;
+                $itemCost = $survey->harga * $item->kuantitas;
+                $taxCost = $survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)' ? ($survey->nominal_pajak ?? 0) : 0;
+                $vendorTotal += ($itemCost + $taxCost);
+            }
+            $vendorTotals[$namaVendor] = $vendorTotal;
+        }
+
+        if (empty($vendorTotals)) return null;
+
+        $minTotal = min($vendorTotals);
+        $cheapestVendorName = array_search($minTotal, $vendorTotals);
+
+        return [
+            'total_cost_raw' => $minTotal,
+            'cheapest_vendor_name' => $cheapestVendorName,
+        ];
+    }
+
+    private function getInitialTax(Pengajuan $record, ?string $vendorName): float
+    {
+        if (!$vendorName) return 0;
+        $totalPajakAwal = 0;
+        foreach ($record->items as $item) {
+            $survey = $item->surveiHargas
+                ->where('nama_vendor', $vendorName)
+                ->where('kondisi_pajak', 'Pajak ditanggung Perusahaan (Exclude)')
+                ->first();
+            if ($survey) {
+                $totalPajakAwal += $survey->nominal_pajak;
+            }
+        }
+        return $totalPajakAwal;
     }
 }
