@@ -47,8 +47,11 @@ class RekomendasiIT extends Page implements HasTable
     {
         $user = Auth::user();
         return Pengajuan::query()
-            ->where('status', Pengajuan::STATUS_REKOMENDASI_IT)
-            ->orWhere('it_recommended_by', $user->id_user);
+            ->where(function (Builder $query) use ($user) {
+                $query->where('status', Pengajuan::STATUS_REKOMENDASI_IT)
+                    ->orWhere('it_recommended_by', $user->id_user);
+            })
+            ->latest();
     }
 
     protected function getTableColumns(): array
@@ -275,8 +278,7 @@ class RekomendasiIT extends Page implements HasTable
                 ->modalHeading('Konfirmasi Submit Rekomendasi')
                 ->modalDescription('Apakah Anda yakin ingin menyubmit rekomendasi ini?')
                 ->modalSubmitActionLabel('Ya, Submit')
-                ->form(function (Forms\Form $form, Pengajuan $record): array {
-                    // Fetch only IT items for display
+                ->mountUsing(function (Form $form, Pengajuan $record) {
                     $itItems = $record->items->filter(function ($item) {
                         return $item->kategori_barang === 'Barang IT';
                     })->map(function ($item) {
@@ -288,42 +290,41 @@ class RekomendasiIT extends Page implements HasTable
                         ];
                     })->toArray();
 
-                    return [
-                        Section::make('Daftar Barang IT')
-                            ->collapsible()
-                            ->schema([
-                                Repeater::make('it_items')
-                                    ->label(false)
-                                    ->schema([
-                                        TextInput::make('nama_barang')
-                                            ->label('Nama Barang')
-                                            ->disabled()
-                                            ->columnSpan(1),
-
-                                        TextInput::make('kuantitas')
-                                            ->label('Kuantitas')
-                                            ->disabled()
-                                            ->columnSpan(1),
-
-                                        Textarea::make('spesifikasi')
-                                            ->label('Spesifikasi')
-                                            ->disabled()
-                                            ->columnSpanFull(), // full width bawah
-
-                                        Textarea::make('justifikasi')
-                                            ->label('Justifikasi')
-                                            ->disabled()
-                                            ->columnSpanFull(), // full width bawah
-                                    ])
-                                    ->default($itItems)
-                                    ->disabled()
-                                    ->columns(2) // grid kanan–kiri
-                                    ->columnSpanFull(),
-                            ]),
-                        Select::make('rekomendasi_it_tipe')->label('Tipe Rekomendasi')->options(['Pembelian Baru' => 'Pembelian Baru', 'Perbaikan' => 'Perbaikan'])->required(),
-                        Textarea::make('rekomendasi_it_catatan')->label('Catatan Rekomendasi')->required(),
-                    ];
+                    $form->fill([
+                        'it_items' => $itItems,
+                    ]);
                 })
+                ->form([
+                    Section::make('Daftar Barang IT')
+                        ->collapsible()
+                        ->schema([
+                            Repeater::make('it_items')
+                                ->label(false)
+                                ->schema([
+                                    TextInput::make('nama_barang')
+                                        ->label('Nama Barang')
+                                        ->disabled()
+                                        ->columnSpan(1),
+                                    TextInput::make('kuantitas')
+                                        ->label('Kuantitas')
+                                        ->disabled()
+                                        ->columnSpan(1),
+                                    Textarea::make('spesifikasi')
+                                        ->label('Spesifikasi')
+                                        ->disabled()
+                                        ->columnSpanFull(), // full width bawah
+                                    Textarea::make('justifikasi')
+                                        ->label('Justifikasi')
+                                        ->disabled()
+                                        ->columnSpanFull(), // full width bawah
+                                ])
+                                ->disabled()
+                                ->columns(2) // grid kanan–kiri
+                                ->columnSpanFull(),
+                        ]),
+                    Select::make('rekomendasi_it_tipe')->label('Tipe Rekomendasi')->options(['Pembelian Baru' => 'Pembelian Baru', 'Perbaikan' => 'Perbaikan'])->required(),
+                    Textarea::make('rekomendasi_it_catatan')->label('Catatan Rekomendasi')->required(),
+                ])
                 ->action(function (array $data, Pengajuan $record) {
                     $record->update([
                         'rekomendasi_it_tipe' => $data['rekomendasi_it_tipe'],

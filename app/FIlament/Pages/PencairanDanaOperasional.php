@@ -64,13 +64,15 @@ class PencairanDanaOperasional extends Page implements HasTable
                     ->orWhere('disbursed_by', $user->id_user);
             });
         } else {
-            $query->whereIn('status', [
-                Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
-                Pengajuan::STATUS_SUDAH_BAYAR,
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
-                Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-            ])
-                ->orWhereNotNull('disbursed_by');
+            $query->where(function (Builder $q) {
+                $q->whereIn('status', [
+                    Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                    Pengajuan::STATUS_SUDAH_BAYAR,
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI,
+                    Pengajuan::STATUS_MENUNGGU_PELUNASAN,
+                ])
+                    ->orWhereNotNull('disbursed_by');
+            });
         }
 
         return $query->latest();

@@ -76,14 +76,16 @@ class SurveiHargaGA extends Page implements HasTable
                 ])->orWhere('ga_surveyed_by', $user->id_user);
             });
         } else {
-            $query->whereIn('status', [
-                Pengajuan::STATUS_SURVEI_GA,
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
-                Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
-                Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-                Pengajuan::STATUS_SUDAH_BAYAR,
-                Pengajuan::STATUS_SELESAI,
-            ])->orWhereNotNull('ga_surveyed_by');
+            $query->where(function (Builder $q) {
+                $q->whereIn('status', [
+                    Pengajuan::STATUS_SURVEI_GA,
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
+                    Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
+                    Pengajuan::STATUS_MENUNGGU_PELUNASAN,
+                    Pengajuan::STATUS_SUDAH_BAYAR,
+                    Pengajuan::STATUS_SELESAI,
+                ])->orWhereNotNull('ga_surveyed_by');
+            });
         }
 
         return $query->latest();
@@ -164,6 +166,7 @@ class SurveiHargaGA extends Page implements HasTable
             'id_item' => $item->id_item,
             'nama_barang' => $item->nama_barang,
             'kategori_barang' => $item->kategori_barang,
+            'kuantitas' => $item->kuantitas,
         ])->toArray();
 
         return [
@@ -183,6 +186,7 @@ class SurveiHargaGA extends Page implements HasTable
                             Placeholder::make('nama_barang_info')
                                 ->label(false)
                                 ->content(fn($get) => new HtmlString('<b class="text-base">' . $get('nama_barang') . '</b>' . ' <span class="text-sm text-gray-500">(' . $get('kategori_barang') . ')</span>')),
+                            Hidden::make('kuantitas')->default(1),
                             Grid::make(2)->schema([
                                 Select::make('tipe_survei')
                                     ->label('Kategori Survei')
@@ -247,11 +251,16 @@ class SurveiHargaGA extends Page implements HasTable
                         ->content(function (Forms\Get $get): HtmlString {
                             $items = $get('item_details') ?? [];
                             $total = 0;
+
                             foreach ($items as $item) {
-                                $harga = (float) ($item['harga'] ?? 0);
+                                $qty = (float) ($item['kuantitas'] ?? 1);
+                                $hargaSatuan = (float) ($item['harga'] ?? 0);
                                 $pajak = (float) ($item['nominal_pajak'] ?? 0);
-                                $total += $harga + ($item['kondisi_pajak'] === 'Pajak ditanggung Perusahaan (Exclude)' ? $pajak : 0);
+                                $pajakDitanggungPerusahaan = ($item['kondisi_pajak'] === 'Pajak ditanggung Perusahaan (Exclude)' ? $pajak : 0);
+
+                                $total += ($hargaSatuan * $qty) + $pajakDitanggungPerusahaan;
                             }
+
                             return new HtmlString('<b class="text-xl text-primary-600">Rp ' . number_format($total, 0, ',', '.') . '</b>');
                         })
                         ->live(),
@@ -279,11 +288,18 @@ class SurveiHargaGA extends Page implements HasTable
                             ->maxValue(function (Forms\Get $get): float {
                                 $items = $get('item_details') ?? [];
                                 $total = 0;
+
                                 foreach ($items as $item) {
+                                    $qty = (float) ($item['kuantitas'] ?? 1);
                                     $harga = (float) ($item['harga'] ?? 0);
+                                    $totalHargaBarang = $harga * $qty;
+
                                     $pajak = (float) ($item['nominal_pajak'] ?? 0);
-                                    $total += $harga + ($item['kondisi_pajak'] === 'Pajak ditanggung Perusahaan (Exclude)' ? $pajak : 0);
+                                    $pajakExclude = ($item['kondisi_pajak'] === 'Pajak ditanggung Perusahaan (Exclude)' ? $pajak : 0);
+
+                                    $total += $totalHargaBarang + $pajakExclude;
                                 }
+
                                 return $total;
                             })
                             ->validationMessages([
@@ -344,7 +360,6 @@ class SurveiHargaGA extends Page implements HasTable
                 return;
             }
 
-            // Menghitung total_nilai berdasarkan vendor termurah (untuk penanda is_final)
             $vendorTotals = [];
             foreach ($data['survei_per_vendor'] as $vendorSurvey) {
                 if (empty($vendorSurvey['nama_vendor'])) continue;
@@ -611,136 +626,6 @@ class SurveiHargaGA extends Page implements HasTable
                     RevisiTimelineSection::make(),
                 ]),
 
-
-            Action::make('revisiHarga')
-                ->label('Revisi Harga')
-                ->icon('heroicon-o-pencil-square')
-                ->color('warning')
-                ->modalWidth('2xl')
-                ->form(function (Pengajuan $record) use ($calculateRevisi) {
-                    return [
-                        Section::make('Revisi Total Harga Barang')->schema([
-                            TextInput::make('harga_lama')
-                                ->label('Total Harga Barang Lama (Non-Pajak)')
-                                ->disabled()->prefix('Rp')
-                                ->formatStateUsing(fn($state) => number_format($state, 0, ',', '.')),
-                            Radio::make('kondisi_harga')
-                                ->label('Kondisi Harga Baru')
-                                ->options(['Biaya Kurang' => 'Biaya Kurang (Butuh dana tambahan)', 'Biaya Lebih' => 'Biaya Lebih (Ada sisa dana)'])
-                                ->required()->live()->afterStateUpdated($calculateRevisi),
-                            TextInput::make('selisih_harga')
-                                ->label('Selisih Harga Barang (Non-Pajak)')
-                                ->numeric()->required()->minValue(1)->prefix('Rp')
-                                ->live()
-                                ->afterStateUpdated($calculateRevisi),
-                            TextInput::make('harga_revisi')
-                                ->label('Total Harga Barang Revisi (Non-Pajak)')
-                                ->numeric()->required()->prefix('Rp')
-                                ->disabled()->dehydrated(true),
-                        ])->columns(2),
-                        Section::make('Revisi Pajak')->schema([
-                            Radio::make('opsi_pajak')
-                                ->label('Opsi Pajak')
-                                ->options([
-                                    'Pajak Sama' => 'Gunakan Total Pajak Sebelumnya',
-                                    'Pajak Berbeda' => 'Input Total Pajak Baru',
-                                ])->default('Pajak Sama')->required()->live(),
-                            TextInput::make('nominal_pajak_baru')
-                                ->label('Total Nominal Pajak Baru')
-                                ->numeric()->prefix('Rp')
-                                ->helperText('Masukkan total pajak baru. Jika tidak ada, isi dengan 0.')
-                                ->required(fn($get) => $get('opsi_pajak') === 'Pajak Berbeda')
-                                ->visible(fn($get) => $get('opsi_pajak') === 'Pajak Berbeda'),
-                            Select::make('jenis_pajak_baru')
-                                ->label('Jenis Pajak (jika ada)')
-                                ->options(['PPh 21' => 'PPh 21', 'PPh 23' => 'PPh 23'])
-                                ->visible(fn($get) => $get('opsi_pajak') === 'Pajak Berbeda'),
-                        ])->columns(2)->collapsible(),
-                        Textarea::make('alasan_revisi')->label('Alasan Revisi')->required()->columnSpanFull(),
-                        FileUpload::make('bukti_revisi')
-                            ->disk('private')
-                            ->directory(fn(Pengajuan $record) => $record->getStorageDirectory())
-                            ->getUploadedFileNameForStorageUsing(fn(UploadedFile $file) => $record->generateUniqueFileName("bukti_revisi", $file)),
-                    ];
-                })
-                ->mountUsing(function (Forms\Form $form, Pengajuan $record) {
-                    $finalVendor = $record->vendorPembayaran->where('is_final', true)->first();
-                    $totalNilaiBarangOriginal = 0;
-                    if ($finalVendor) {
-                        foreach ($record->items as $item) {
-                            $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
-                            if ($survey) {
-                                $totalNilaiBarangOriginal += ($survey->harga * $item->kuantitas);
-                            }
-                        }
-                    }
-                    $form->fill([
-                        'harga_lama' => $totalNilaiBarangOriginal,
-                        'harga_revisi' => $totalNilaiBarangOriginal,
-                    ]);
-                })
-                ->action(function (array $data, Pengajuan $record): void {
-                    $finalVendor = $record->vendorPembayaran()->where('is_final', true)->first();
-                    if (!$finalVendor) {
-                        Notification::make()->title('Error')->body('Vendor final tidak ditemukan.')->danger()->send();
-                        return;
-                    }
-                    $firstSurvey = $record->items()->first()?->surveiHargas()->where('nama_vendor', $finalVendor->nama_vendor)->first();
-                    if (!$firstSurvey) {
-                        Notification::make()->title('Error')->body('Data survei harga final tidak ditemukan.')->danger()->send();
-                        return;
-                    }
-                    $totalNilaiBarangOriginal = 0;
-                    foreach ($record->items as $item) {
-                        $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
-                        if ($survey) {
-                            $totalNilaiBarangOriginal += ($survey->harga * $item->kuantitas);
-                        }
-                    }
-                    $totalPajakAwal = 0;
-                    $jenisPajakAwal = null;
-                    foreach ($record->items as $item) {
-                        $survey = $item->surveiHargas->where('nama_vendor', $finalVendor->nama_vendor)->first();
-                        if ($survey && $survey->kondisi_pajak === 'Pajak ditanggung Perusahaan (Exclude)') {
-                            $totalPajakAwal += $survey->nominal_pajak;
-                            if (!$jenisPajakAwal) {
-                                $jenisPajakAwal = $survey->jenis_pajak;
-                            }
-                        }
-                    }
-
-                    $pajakData = [];
-                    if ($data['opsi_pajak'] === 'Pajak Sama') {
-                        $pajakData = [
-                            'kondisi_pajak' => $totalPajakAwal > 0 ? 'Pajak ditanggung BPRS' : 'Tidak Ada Pajak',
-                            'jenis_pajak' => $jenisPajakAwal,
-                            'nominal_pajak' => $totalPajakAwal,
-                        ];
-                    } else {
-                        $nominalPajakBaru = $data['nominal_pajak_baru'] ?? 0;
-                        $pajakData = [
-                            'kondisi_pajak' => $nominalPajakBaru > 0 ? 'Pajak ditanggung BPRS' : 'Tidak Ada Pajak',
-                            'jenis_pajak' => $data['jenis_pajak_baru'] ?? null,
-                            'nominal_pajak' => $nominalPajakBaru,
-                        ];
-                    }
-
-                    RevisiHarga::create(array_merge([
-                        'survei_harga_id' => $firstSurvey->id,
-                        'harga_awal' => $totalNilaiBarangOriginal,
-                        'harga_revisi' => $data['harga_revisi'],
-                        'alasan_revisi' => $data['alasan_revisi'],
-                        'bukti_revisi' => $data['bukti_revisi'],
-                        'tanggal_revisi' => now(),
-                        'direvisi_oleh' => Auth::id(),
-                        'opsi_pajak' => $data['opsi_pajak'],
-                    ], $pajakData));
-
-                    $record->update(['status' => Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET_REVISI]);
-                    Notification::make()->title('Revisi Harga Berhasil')->body('Pengajuan akan diproses untuk approval ulang.')->success()->send();
-                })
-                ->visible(fn(Pengajuan $record): bool => $record->canRevisePrice()),
-
             Action::make('submit_survey')
                 ->label('Input Survei Harga')
                 ->color('info')
@@ -784,6 +669,7 @@ class SurveiHargaGA extends Page implements HasTable
                                 'id_item' => $item->id_item,
                                 'nama_barang' => $item->nama_barang,
                                 'kategori_barang' => $item->kategori_barang,
+                                'kuantitas' => $item->kuantitas,
                                 'tipe_survei' => $surveyForItem?->tipe_survei,
                                 'harga' => $surveyForItem?->harga,
                                 'rincian_harga' => $surveyForItem?->rincian_harga,
@@ -804,17 +690,8 @@ class SurveiHargaGA extends Page implements HasTable
 
             Action::make('download_spm')
                 ->label('SPM')
-                ->icon('heroicon-o-arrow-down-tray')
-                ->color('success')
-                ->visible(
-                    fn(Pengajuan $record) =>
-                    in_array($record->status, [
-                        Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
-                        Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-                        Pengajuan::STATUS_SUDAH_BAYAR,
-                        Pengajuan::STATUS_SELESAI,
-                    ])
-                )
+                ->color('info')
+                ->icon('heroicon-o-document-arrow-down')
                 ->action(function (Pengajuan $record) {
                     $finalVendor = $record->vendorPembayaran()->where('is_final', true)->first();
                     if (!$finalVendor) {
@@ -914,6 +791,8 @@ class SurveiHargaGA extends Page implements HasTable
                         'tanggal_pengajuan' => $record->created_at->translatedFormat('d F Y'),
                         'pemohon' => $record->pemohon->nama_user,
                         'divisi' => $record->pemohon->divisi->nama_divisi,
+                        'status_budget' => $record->status_budget,
+                        'catatan_budget' => $record->catatan_budget,
                         'items_original' => $itemsOriginal,
                         'total_nilai_barang_original' => $totalNilaiBarangOriginal,
                         'total_pajak_original' => $totalPajakOriginal,

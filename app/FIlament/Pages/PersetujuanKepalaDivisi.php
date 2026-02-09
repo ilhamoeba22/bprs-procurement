@@ -49,11 +49,13 @@ class PersetujuanKepalaDivisi extends Page implements HasTable
         $query = Pengajuan::query()->with(['items', 'pemohon.divisi']);
 
         if ($user->hasRole('Super Admin')) {
-            return $query->whereIn('status', [
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV,
-                Pengajuan::STATUS_REKOMENDASI_IT,
-                Pengajuan::STATUS_SURVEI_GA,
-            ])->orWhereNotNull('kadiv_approved_by');
+            return $query->where(function (Builder $q) {
+                $q->whereIn('status', [
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV,
+                    Pengajuan::STATUS_REKOMENDASI_IT,
+                    Pengajuan::STATUS_SURVEI_GA,
+                ])->orWhereNotNull('kadiv_approved_by');
+            });
         }
 
         $query->where(function (Builder $q) use ($user) {

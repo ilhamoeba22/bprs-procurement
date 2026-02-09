@@ -48,17 +48,21 @@ class PersetujuanManager extends Page implements HasTable
         $query = Pengajuan::query()->with(['items', 'pemohon.divisi']);
 
         if ($user->hasRole('Super Admin')) {
-            return $query->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER)
-                ->orWhereNotNull('manager_approved_by');
+            return $query->where(function (Builder $q) {
+                $q->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER)
+                    ->orWhereNotNull('manager_approved_by');
+            });
         }
 
         $query->where(function (Builder $q) use ($user) {
-            $q->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER)
-                ->whereHas('pemohon', function (Builder $pemohonQ) use ($user) {
-                    $pemohonQ->where('id_divisi', $user->id_divisi);
-                });
-        })
-            ->orWhere('manager_approved_by', $user->id_user);
+            $q->where(function (Builder $subQ) use ($user) {
+                $subQ->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER)
+                    ->whereHas('pemohon', function (Builder $pemohonQ) use ($user) {
+                        $pemohonQ->where('id_divisi', $user->id_divisi);
+                    });
+            })
+                ->orWhere('manager_approved_by', $user->id_user);
+        });
 
         return $query->latest();
     }

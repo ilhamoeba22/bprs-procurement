@@ -60,7 +60,9 @@ class PersetujuanBudgeting extends Page implements HasTable
                 $q->whereIn('status', $statuses)->orWhere('budget_approved_by', $user->id_user);
             });
         } else {
-            $query->whereIn('status', $statuses)->orWhereNotNull('budget_approved_by');
+            $query->where(function (Builder $q) use ($statuses) {
+                $q->whereIn('status', $statuses)->orWhereNotNull('budget_approved_by');
+            });
         }
         return $query->latest();
     }

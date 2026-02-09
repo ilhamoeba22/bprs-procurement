@@ -62,11 +62,12 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
                     ->orWhere('kadiv_ga_approved_by', $user->id_user);
             });
         } else {
-            $query->whereIn('status', array_merge($statusesForAction, [
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
-                Pengajuan::STATUS_DITOLAK_KADIV_GA,
-                // Tambahkan status lain setelah tahap ini jika perlu dilihat oleh Super Admin
-            ]))->orWhereNotNull('kadiv_ga_approved_by');
+            $query->where(function (Builder $q) use ($statusesForAction) {
+                $q->whereIn('status', array_merge($statusesForAction, [
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
+                    Pengajuan::STATUS_DITOLAK_KADIV_GA,
+                ]))->orWhereNotNull('kadiv_ga_approved_by');
+            });
         }
 
         return $query->latest();

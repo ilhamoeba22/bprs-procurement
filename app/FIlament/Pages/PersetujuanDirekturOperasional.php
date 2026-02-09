@@ -64,12 +64,14 @@ class PersetujuanDirekturOperasional extends Page implements HasTable
                 })->orWhere('direktur_operasional_approved_by', $user->id_user);
             });
         } else {
-            $query->whereIn('status', [
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL,
-                Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS,
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI,
-                Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-            ])->orWhereNotNull('direktur_operasional_approved_by');
+            $query->where(function (Builder $q) {
+                $q->whereIn('status', [
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL,
+                    Pengajuan::STATUS_MENUNGGU_VALIDASI_BUDGET_REVISI_KADIV_OPS,
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL_REVISI,
+                    Pengajuan::STATUS_MENUNGGU_PELUNASAN,
+                ])->orWhereNotNull('direktur_operasional_approved_by');
+            });
         }
 
         return $query->latest();

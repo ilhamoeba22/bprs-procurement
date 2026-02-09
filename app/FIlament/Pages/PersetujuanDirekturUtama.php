@@ -61,11 +61,13 @@ class PersetujuanDirekturUtama extends Page implements HasTable
                 })->orWhere('direktur_utama_approved_by', $user->id_user);
             });
         } else {
-            $query->whereIn('status', [
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
-                Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI,
-                Pengajuan::STATUS_MENUNGGU_PELUNASAN,
-            ])->orWhereNotNull('direktur_utama_approved_by');
+            $query->where(function (Builder $q) {
+                $q->whereIn('status', [
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
+                    Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI,
+                    Pengajuan::STATUS_MENUNGGU_PELUNASAN,
+                ])->orWhereNotNull('direktur_utama_approved_by');
+            });
         }
 
         return $query->latest();

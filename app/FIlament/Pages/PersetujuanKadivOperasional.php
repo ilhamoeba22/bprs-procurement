@@ -62,8 +62,10 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                 Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_OPERASIONAL,
                 Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
             ];
-            $query->whereIn('status', array_merge($statuses, $statusesAfter))
-                ->orWhereNotNull('kadiv_ops_budget_approved_by');
+            $query->where(function (Builder $q) use ($statuses, $statusesAfter) {
+                $q->whereIn('status', array_merge($statuses, $statusesAfter))
+                    ->orWhereNotNull('kadiv_ops_budget_approved_by');
+            });
         }
 
         return $query->latest();
