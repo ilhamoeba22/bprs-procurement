@@ -97,7 +97,11 @@ class SurveiHargaGA extends Page implements HasTable
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
-            TextColumn::make('nama_barang')->label('Nama Barang')->searchable()->getStateUsing(function (Pengajuan $record): string {
+            TextColumn::make('nama_barang')->label('Nama Barang')->searchable(query: function (Builder $query, string $search): Builder {
+                return $query->whereHas('items', function (Builder $q) use ($search) {
+                    $q->where('nama_barang', 'like', "%{$search}%");
+                });
+            })->getStateUsing(function (Pengajuan $record): string {
                 $firstItem = $record->items->first();
                 return $firstItem ? $firstItem->nama_barang : '-';
             }),
