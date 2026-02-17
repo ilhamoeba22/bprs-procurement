@@ -1,0 +1,199 @@
+{
+  "meta_info": {
+    "project_name": "BPRS Procurement System",
+    "version": "1.0.0",
+    "description": "Sistem informasi manajemen pengadaan barang dan jasa terintegrasi untuk BPRS, dengan workflow approval multi-level, manajemen vendor, dan tracking real-time.",
+    "last_updated": "2025-09-29",
+    "tech_stack": {
+      "backend_framework": "Laravel 12.0",
+      "admin_panel": "FilamentPHP 3.3",
+      "language": "PHP 8.2+",
+      "database": "MySQL 8.0+",
+      "server": "Apache/Nginx",
+      "frontend_assets": "Vite, TailwindCSS"
+    },
+    "key_dependencies": [
+      { "package": "spatie/laravel-permission", "purpose": "Manajemen Role dan Permission" },
+      { "package": "barryvdh/laravel-dompdf", "purpose": "Generate PDF untuk dokumen pengajuan/PO" },
+      { "package": "simplesoftwareio/simple-qrcode", "purpose": "Generate QR Code untuk verifikasi dokumen fisik" },
+      { "package": "filament/filament", "purpose": "Admin Panel & CRUD Generator" }
+    ]
+  },
+  "directory_structure": {
+    "app": {
+      "Filament": {
+        "Resources": "Logika inti UI Admin Panel (CRUD)",
+        "Pages": "Halaman custom di luar Resource standar",
+        "Widgets": "Komponen dashboard (Statistik, Chart)"
+      },
+      "Http": {
+        "Controllers": "Menangani logic request HTTP kustom (selain Filament)",
+        "Middleware": "Filter request (Auth, Permission checks)"
+      },
+      "Models": "Representasi tabel database dan relasi Eloquent",
+      "Providers": "Service provider untuk bootstrapping aplikasi (AppServiceProvider, AdminPanelProvider)"
+    },
+    "database": {
+      "migrations": "Definisi skema database (DDL)",
+      "seeders": "Data awal (Master data, User, Roles)"
+    },
+    "routes": {
+      "web.php": "Definisi route verifikasi QR dan akses file privat",
+      "console.php": "Definisi artisan commands"
+    },
+    "resources": {
+      "views": "Template blade untuk PDF dan halaman verifikasi"
+    }
+  },
+  "database_schema": {
+    "tables": [
+      {
+        "name": "users",
+        "description": "Menyimpan data otentikasi pengguna.",
+        "columns": [
+            "id_user (PK)", "nama_user", "nik_user (Unique)", "password", "id_jabatan (FK)", "id_divisi (FK)", "id_kantor (FK)"
+        ],
+        "relationships": [
+            "belongsTo Jabatan", "belongsTo Divisi", "belongsTo Kantor", "hasMany Pengajuan (as pemohon)"
+        ]
+      },
+      {
+        "name": "pengajuans",
+        "description": "Tabel utama transaksi pengadaan.",
+        "columns": [
+            "id_pengajuan (PK)", "kode_pengajuan (Unique)", "id_user_pemohon (FK)", "status", "total_nilai", "catatan_revisi",
+            "tanggal_pengajuan", "approver_manager_id", "approver_kadiv_id", "dst..."
+        ],
+        "relationships": [
+            "belongsTo User (pemohon)", "hasMany PengajuanItem", "hasMany VendorPembayaran"
+        ]
+      },
+      {
+        "name": "pengajuan_items",
+        "description": "Detail barang dalam satu pengajuan.",
+        "columns": [
+            "id_item (PK)", "id_pengajuan (FK)", "nama_barang", "spesifikasi", "kuantitas", "kategori_barang"
+        ],
+        "relationships": [
+            "belongsTo Pengajuan", "hasMany SurveiHarga"
+        ]
+      },
+      {
+        "name": "survei_hargas",
+        "description": "Data perbandingan harga vendor per item.",
+        "columns": [
+            "id_survei (PK)", "id_item (FK)", "nama_vendor", "harga_satuan", "total_harga", "is_selected", "bukti_penawaran (File Path)"
+        ]
+      },
+      {
+        "name": "vendor_pembayaran",
+        "description": "Data vendor yang dipilih untuk pembayaran final.",
+        "columns": [
+            "id_pembayaran (PK)", "id_pengajuan (FK)", "nama_vendor", "bank_tujuan", "no_rekening", "bukti_transfer"
+        ]
+      }
+    ]
+  },
+  "access_control_matrix": {
+    "roles": [
+        "Staff", "Manager", "Kepala Divisi", "Kepala Divisi IT", "General Affairs (GA)", "Kepala Divisi GA", 
+        "Direktur Operasional", "Direktur Utama", "Tim Budgeting", "Super Admin"
+    ],
+    "permissions_list": [
+        "buat pengajuan", "approval manager", "approval kadiv", "rekomendasi it", "survei harga ga",
+        "approval kadiv ga", "approval direktur operasional", "approval direktur utama", "pencairan dana", "lihat semua pengajuan"
+    ],
+    "role_capabilities": [
+      {
+        "role": "Staff / Pemohon",
+        "can_approve": false,
+        "actions": [
+            "Membuat Pengajuan Baru (Draft)",
+            "Mengedit Pengajuan (Only Draft)",
+            "Melihat Pengajuan Sendiri"
+        ],
+        "view_scope": "Own Data Only"
+      },
+      {
+        "role": "Manager",
+        "can_approve": true,
+        "actions": [
+            "Approve/Reject Pengajuan Staff Bawahannya"
+        ],
+        "view_scope": "Divisional Data"
+      },
+      {
+        "role": "Kepala Divisi (Kadiv)",
+        "can_approve": true,
+        "actions": [
+            "Approve/Reject Pengajuan setelah Manager",
+            "Trigger logic IT/GA"
+        ],
+        "view_scope": "Divisional Data"
+      },
+      {
+        "role": "Kepala Divisi IT",
+        "can_approve": false,
+        "actions": [
+            "Input Rekomendasi Teknis (Jika ada item IT)"
+        ],
+        "view_scope": "IT Requests Only"
+      },
+      {
+        "role": "General Affairs (GA)",
+        "can_approve": false,
+        "actions": [
+            "Input Hasil Survei Vendor",
+            "Upload Bukti Penawaran",
+            "Input Nilai Total Pengajuan"
+        ],
+        "view_scope": "All Requests in Survey Stage"
+      },
+      {
+        "role": "Kepala Divisi GA",
+        "can_approve": true,
+        "actions": [
+            "Final Approval (Nominal <= Rp 1.000.000)"
+        ],
+        "view_scope": "All Requests"
+      },
+      {
+        "role": "Direksi (DirOps / DirUt)",
+        "can_approve": true,
+        "actions": [
+            "Final Approval (Nominal > Rp 1.000.000)",
+            "Reject with Note"
+        ],
+        "view_scope": "All Requests (Global View)"
+      }
+    ]
+  },
+  "workflow_logic": {
+    "main_flow": [
+        { "stage": 1, "status": "Draft", "condition": "Created by Staff", "next": "Menunggu Approval Manager" },
+        { "stage": 2, "status": "Menunggu Approval Manager", "condition": "Approve", "next": "Menunggu Approval Kepala Divisi" },
+        { "stage": 3, "status": "Menunggu Approval Kepala Divisi", "condition": "Approve", "branch": {
+            "if_it_items_exist": "Menunggu Rekomendasi IT",
+            "else": "Proses Survei Harga GA"
+        }},
+        { "stage": 4, "status": "Menunggu Rekomendasi IT", "condition": "Submit Recommendation", "next": "Proses Survei Harga GA" },
+        { "stage": 5, "status": "Proses Survei Harga GA", "condition": "Input Nilai & Submit", "branch": {
+            "if_total_<=_1_million": "Menunggu Approval Kadiv GA",
+            "if_total_>_1_million": "Menunggu Approval Direktur Operasional"
+        }},
+        { "stage": 6, "status": "Approval Final", "condition": "Approve", "next": "Disetujui untuk Pembelian" },
+        { "stage": 7, "status": "Disetujui untuk Pembelian", "condition": "Request Payment", "next": "Menunggu Pencarian Dana" },
+        { "stage": 8, "status": "Menunggu Pencarian Dana", "condition": "Disburse Funds", "next": "Menunggu Pelunasan" },
+        { "stage": 9, "status": "Menunggu Pelunasan", "condition": "Upload Bukti Pelunasan", "next": "Selesai" }
+    ],
+    "special_conditions": [
+        { "name": "IT Recommendation", "trigger": "Item Category: Software/Hardware", "effect": "Adds extra step for IT validation" },
+        { "name": "Budget Check", "trigger": "Always", "effect": "Validated by Budget Team before purchase approval" }
+    ]
+  },
+  "api_endpoints": [
+    { "method": "GET", "url": "/verify/approval/{pengajuan}/{user}", "description": "Halaman publik verifikasi approval via QR Code. Tidak butuh login." },
+    { "method": "GET", "url": "/private-files/{path}", "description": "Akses secure ke file upload (bukti bayar, penawaran). Butuh login." },
+    { "method": "POST", "url": "/livewire/message/...", "description": "Internal Livewire endpoints for Filament interactions." }
+  ]
+}
