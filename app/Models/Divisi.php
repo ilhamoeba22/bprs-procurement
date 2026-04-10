@@ -9,17 +9,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Divisi extends Model
 {
     use HasFactory;
-    protected $primaryKey = 'id_divisi';
-    protected $fillable = ['nama_divisi', 'id_kantor'];
 
-    /**
-     * Mendefinisikan relasi bahwa satu Divisi dimiliki oleh satu Kantor.
-     * INI ADALAH FUNGSI YANG MEMPERBAIKI ERROR ANDA.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
-     */
+    protected $connection = 'sso';
+    protected $primaryKey = 'id';
+    protected $fillable = ['nama_divisi', 'kantor_id'];
+
     public function kantor(): BelongsTo
     {
-        return $this->belongsTo(Kantor::class, 'id_kantor', 'id_kantor');
+        return $this->belongsTo(Kantor::class, 'kantor_id');
     }
 }

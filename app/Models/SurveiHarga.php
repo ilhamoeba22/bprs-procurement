@@ -12,7 +12,7 @@ class SurveiHarga extends Model
     use HasFactory;
 
     protected $fillable = [
-        'id_item',
+        'item_id',
         'tipe_survei',
         'nama_vendor',
         'harga',
@@ -27,7 +27,7 @@ class SurveiHarga extends Model
 
     public function pengajuanItem(): BelongsTo
     {
-        return $this->belongsTo(PengajuanItem::class, 'id_item');
+        return $this->belongsTo(PengajuanItem::class, 'item_id');
     }
 
     public function revisiHargas(): HasMany

@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Casts\Attribute; // <-- Tambahkan ini
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -16,20 +16,29 @@ class User extends Authenticatable implements FilamentUser
     use HasFactory, Notifiable, HasRoles;
 
     /**
-     * Tentukan primary key jika bukan 'id'.
+     * Koneksi ke database SSO (sumber kebenaran user).
      */
-    protected $primaryKey = 'id_user';
+    protected $connection = 'sso';
 
     /**
-     * Kolom yang boleh diisi, termasuk nama_user.
+     * Primary key sesuai konvensi SSO.
+     */
+    protected $primaryKey = 'id';
+
+    /**
+     * Kolom yang boleh diisi.
      */
     protected $fillable = [
         'nama_user',
         'nik_user',
         'password',
-        'id_kantor',
-        'id_divisi',
-        'id_jabatan',
+        'kantor_id',
+        'divisi_id',
+        'jabatan_id',
+        'email',
+        'phone_number',
+        'avatar',
+        'is_active',
     ];
 
     /**
@@ -47,6 +56,7 @@ class User extends Authenticatable implements FilamentUser
     {
         return [
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -66,15 +76,8 @@ class User extends Authenticatable implements FilamentUser
         return $this->nama_user;
     }
 
-    //==============================================================
-    // AKSESOR (JEMBATAN) - KODE PERBAIKAN UTAMA
-    //==============================================================
     /**
-     * Membuat atribut 'name' virtual.
-     * Ini akan membuat model kita kompatibel dengan bagian mana pun
-     * dari framework yang mungkin masih mencari atribut 'name' secara default.
-     *
-     * @return \Illuminate\Database\Eloquent\Casts\Attribute
+     * Aksesor 'name' virtual - kompatibilitas dengan framework.
      */
     protected function name(): Attribute
     {
@@ -82,23 +85,23 @@ class User extends Authenticatable implements FilamentUser
             get: fn() => $this->nama_user,
         );
     }
-    //==============================================================
 
-    /**
-     * Relasi ke Jabatan.
-     */
+    // ==========================================
+    // Relationships (konvensi FK SSO)
+    // ==========================================
+
     public function kantor(): BelongsTo
     {
-        return $this->belongsTo(Kantor::class, 'id_kantor', 'id_kantor');
+        return $this->belongsTo(Kantor::class, 'kantor_id');
     }
 
     public function divisi(): BelongsTo
     {
-        return $this->belongsTo(Divisi::class, 'id_divisi', 'id_divisi');
+        return $this->belongsTo(Divisi::class, 'divisi_id');
     }
 
     public function jabatan(): BelongsTo
     {
-        return $this->belongsTo(Jabatan::class, 'id_jabatan', 'id_jabatan');
+        return $this->belongsTo(Jabatan::class, 'jabatan_id');
     }
 }

@@ -17,10 +17,10 @@ class Pengajuan extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'id_pengajuan';
+    protected $primaryKey = 'id';
     protected $fillable = [
         'kode_pengajuan',
-        'id_user_pemohon',
+        'pemohon_id',
         'status',
         'total_nilai',
         'catatan_revisi',
@@ -30,25 +30,25 @@ class Pengajuan extends Model
         'catatan_budget',
         'kadiv_ga_decision_type',
         'kadiv_ga_catatan',
-        'manager_approved_by',
+        'manager_id',
         'manager_approved_at',
-        'kadiv_approved_by',
+        'kadiv_id',
         'kadiv_approved_at',
-        'it_recommended_by',
+        'it_id',
         'it_recommended_at',
-        'ga_surveyed_by',
+        'ga_id',
         'ga_surveyed_at',
-        'budget_approved_by',
+        'budget_id',
         'budget_approved_at',
-        'kadiv_ops_budget_approved_by',
+        'kadiv_ops_id',
         'kadiv_ops_budget_approved_at',
-        'kadiv_ga_approved_by',
+        'kadiv_ga_id',
         'kadiv_ga_approved_at',
-        'direktur_operasional_approved_by',
+        'dirop_id',
         'direktur_operasional_approved_at',
-        'direktur_utama_approved_by',
+        'dirut_id',
         'direktur_utama_approved_at',
-        'disbursed_by',
+        'disburser_id',
         'direktur_utama_decision_type',
         'direktur_utama_catatan',
         'direktur_operasional_decision_type',
@@ -87,67 +87,67 @@ class Pengajuan extends Model
 
     public function pemohon(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'id_user_pemohon', 'id_user');
+        return $this->belongsTo(User::class, 'pemohon_id', 'id');
     }
 
     public function items(): HasMany
     {
-        return $this->hasMany(PengajuanItem::class, 'id_pengajuan', 'id_pengajuan');
+        return $this->hasMany(PengajuanItem::class, 'pengajuan_id', 'id');
     }
 
     public function vendorPembayaran(): HasMany
     {
-        return $this->hasMany(VendorPembayaran::class, 'id_pengajuan', 'id_pengajuan');
+        return $this->hasMany(VendorPembayaran::class, 'pengajuan_id', 'id');
     }
 
     public function approverManager(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'manager_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'manager_id', 'id');
     }
 
     public function approverKadiv(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'kadiv_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'kadiv_id', 'id');
     }
 
     public function recommenderIt(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'it_recommended_by', 'id_user');
+        return $this->belongsTo(User::class, 'it_id', 'id');
     }
 
     public function surveyorGa(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'ga_surveyed_by', 'id_user');
+        return $this->belongsTo(User::class, 'ga_id', 'id');
     }
 
     public function approverBudget(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'budget_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'budget_id', 'id');
     }
 
     public function validatorBudgetOps(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'kadiv_ops_budget_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'kadiv_ops_id', 'id');
     }
 
     public function approverKadivGa(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'kadiv_ga_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'kadiv_ga_id', 'id');
     }
 
     public function approverDirOps(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'direktur_operasional_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'dirop_id', 'id');
     }
 
     public function approverDirUtama(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'direktur_utama_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'dirut_id', 'id');
     }
 
     public function disbursedBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'disbursed_by', 'id_user');
+        return $this->belongsTo(User::class, 'disburser_id', 'id');
     }
 
     public static function getStatusBadgeColor($status): string

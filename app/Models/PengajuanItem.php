@@ -13,9 +13,9 @@ class PengajuanItem extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'id_item';
+    protected $primaryKey = 'id';
     protected $fillable = [
-        'id_pengajuan',
+        'pengajuan_id',
         'kategori_barang',
         'nama_barang',
         'kuantitas',
@@ -29,7 +29,7 @@ class PengajuanItem extends Model
      */
     public function pengajuan(): BelongsTo
     {
-        return $this->belongsTo(Pengajuan::class, 'id_pengajuan', 'id_pengajuan');
+        return $this->belongsTo(Pengajuan::class, 'pengajuan_id', 'id');
     }
 
     /**
@@ -37,7 +37,7 @@ class PengajuanItem extends Model
      */
     public function surveiHargas(): HasMany
     {
-        return $this->hasMany(SurveiHarga::class, 'id_item');
+        return $this->hasMany(SurveiHarga::class, 'item_id');
     }
 
     /**
@@ -66,9 +66,9 @@ class PengajuanItem extends Model
         return $this->hasManyThrough(
             RevisiHarga::class,
             SurveiHarga::class,
-            'id_item',
+            'item_id',
             'survei_harga_id',
-            'id_item',
+            'id',
             'id'
         );
     }

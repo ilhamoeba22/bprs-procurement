@@ -30,18 +30,21 @@ class RevisiHarga extends Model
         'revisi_budget_catatan_pengadaan',
         'revisi_budget_status_perbaikan',
         'revisi_budget_catatan_perbaikan',
-        'revisi_budget_approved_by',
+        'revisi_budget_id',
         'revisi_kadiv_ga_decision_type',
         'revisi_kadiv_ga_catatan',
-        'revisi_kadiv_ga_approved_by',
-        'revisi_budget_validated_by',
+        'revisi_kadiv_ga_id',
+        'revisi_kadiv_ops_decision_type',
+        'revisi_kadiv_ops_catatan',
+        'revisi_kadiv_ops_id',
+        'revisi_budget_validator_id',
         'revisi_budget_validated_at',
         'revisi_direktur_operasional_decision_type',
         'revisi_direktur_operasional_catatan',
-        'revisi_direktur_operasional_approved_by',
+        'revisi_dirop_id',
         'revisi_direktur_utama_decision_type',
         'revisi_direktur_utama_catatan',
-        'revisi_direktur_utama_approved_by',
+        'revisi_dirut_id',
     ];
 
     protected $casts = [
@@ -58,31 +61,36 @@ class RevisiHarga extends Model
 
     public function direvisiOleh(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'direvisi_oleh', 'id_user');
+        return $this->belongsTo(User::class, 'direvisi_oleh', 'id');
     }
 
     public function revisiBudgetApprover(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'revisi_budget_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'revisi_budget_id', 'id');
     }
 
     public function revisiKadivGaApprover(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'revisi_kadiv_ga_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'revisi_kadiv_ga_id', 'id');
+    }
+
+    public function revisiKadivOpsApprover(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'revisi_kadiv_ops_id', 'id');
     }
 
     public function revisiBudgetValidator(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'revisi_budget_validated_by', 'id_user');
+        return $this->belongsTo(User::class, 'revisi_budget_validator_id', 'id');
     }
 
     public function revisiDirekturOperasionalApprover(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'revisi_direktur_operasional_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'revisi_dirop_id', 'id');
     }
 
     public function revisiDirekturUtamaApprover(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'revisi_direktur_utama_approved_by', 'id_user');
+        return $this->belongsTo(User::class, 'revisi_dirut_id', 'id');
     }
 }

@@ -11,9 +11,9 @@ class VendorPembayaran extends Model
     use HasFactory;
 
     protected $table = 'vendor_pembayaran';
-    protected $primaryKey = 'id_pembayaran';
+    protected $primaryKey = 'id';
     protected $fillable = [
-        'id_pengajuan',
+        'pengajuan_id',
         'nama_vendor',
         'metode_pembayaran',
         'opsi_pembayaran',
@@ -41,6 +41,6 @@ class VendorPembayaran extends Model
 
     public function pengajuan(): BelongsTo
     {
-        return $this->belongsTo(Pengajuan::class, 'id_pengajuan', 'id_pengajuan');
+        return $this->belongsTo(Pengajuan::class, 'pengajuan_id', 'id');
     }
 }
