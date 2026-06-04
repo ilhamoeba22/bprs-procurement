@@ -166,7 +166,7 @@ class SurveiHargaGA extends Page implements HasTable
                                 ->where('kondisi_pajak', 'Pajak ditanggung Perusahaan (Exclude)')
                                 ->first();
                             if ($survey) {
-                                $totalPajakAwal += $survey->nominal_pajak;
+                                $totalPajakAwal += round((float) ($survey->nominal_pajak ?? 0), 2);
                             }
                         }
                         $totalBiayaAwal = $hargaAwalBarang + $totalPajakAwal;
@@ -763,20 +763,21 @@ class SurveiHargaGA extends Page implements HasTable
                             ]);
 
                             if ($isTaxExclude) {
-                                $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                $totalPajakOriginal += round((float) ($survey->nominal_pajak ?? 0), 2);
                                 $taxConditionOriginal = 'Pajak ditanggung Perusahaan (Exclude)';
                                 if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
                             } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
-                                $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                $totalPajakOriginal += round((float) ($survey->nominal_pajak ?? 0), 2);
                                 $taxConditionOriginal = 'Pajak ditanggung Vendor (Include)';
                                 if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
                             }
                         }
                     }
 
+                    $totalPajakOriginal  = round($totalPajakOriginal, 2);
                     $totalBiayaOriginal = $totalNilaiBarangOriginal;
                     if ($taxConditionOriginal === 'Pajak ditanggung Perusahaan (Exclude)') {
-                        $totalBiayaOriginal += $totalPajakOriginal;
+                        $totalBiayaOriginal = round($totalBiayaOriginal + $totalPajakOriginal, 2);
                     }
 
                     $latestRevisi = $record->items

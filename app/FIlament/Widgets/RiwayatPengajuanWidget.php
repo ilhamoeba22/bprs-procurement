@@ -118,20 +118,21 @@ class RiwayatPengajuanWidget extends BaseWidget
                             if ($survey) {
                                 $isTaxExclude = in_array($survey->kondisi_pajak, ['Pajak ditanggung Perusahaan (Exclude)', 'Pajak ditanggung kita', 'Pajak ditanggung BPRS']);
                                 if ($isTaxExclude) {
-                                    $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                    $totalPajakOriginal += round((float) ($survey->nominal_pajak ?? 0), 2);
                                     $taxConditionOriginal = 'Pajak ditanggung Perusahaan (Exclude)';
                                     if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
                                 } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
-                                    $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                    $totalPajakOriginal += round((float) ($survey->nominal_pajak ?? 0), 2);
                                     $taxConditionOriginal = 'Pajak ditanggung Vendor (Include)';
                                     if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
                                 }
                             }
                         }
 
+                        $totalPajakOriginal = round($totalPajakOriginal, 2);
                         $totalBiayaOriginal = $totalNilaiBarangOriginal;
                         if ($taxConditionOriginal === 'Pajak ditanggung Perusahaan (Exclude)') {
-                            $totalBiayaOriginal += $totalPajakOriginal;
+                            $totalBiayaOriginal = round($totalBiayaOriginal + $totalPajakOriginal, 2);
                         }
 
                         $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();

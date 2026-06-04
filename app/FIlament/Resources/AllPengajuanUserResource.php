@@ -12,7 +12,7 @@ use Filament\Tables\Table;
 use App\Filament\Components\StandardDetailSections;
 use Illuminate\Database\Eloquent\Builder;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\BadgeColumn;
+
 use Illuminate\Support\Facades\Auth;
 
 class AllPengajuanUserResource extends Resource
@@ -149,8 +149,9 @@ class AllPengajuanUserResource extends Resource
                 TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable()->sortable(),
                 TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi')->sortable(),
                 TextColumn::make('created_at')->label('Tanggal')->date()->sortable(),
-                BadgeColumn::make('status')
+                TextColumn::make('status')
                     ->label('Status')
+                    ->badge()
                     ->color(fn ($state) => Pengajuan::getStatusBadgeColor($state)),
             ])
             ->filters([

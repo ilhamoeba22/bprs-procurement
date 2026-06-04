@@ -106,8 +106,7 @@ class PersetujuanBudgeting extends Page implements HasTable
                                 ->where('kondisi_pajak', 'Pajak ditanggung BPRS')
                                 ->first();
                             if ($survey) {
-                                $totalPajakAwal += $survey->nominal_pajak;
-                            }
+                                $totalPajakAwal += round((float) ($survey->nominal_pajak ?? 0), 2);}
                         }
 
                         $totalBiayaAwal = $hargaAwalBarang + $totalPajakAwal;
@@ -586,8 +585,7 @@ class PersetujuanBudgeting extends Page implements HasTable
                 ->where('kondisi_pajak', 'Pajak ditanggung Perusahaan (Exclude)')
                 ->first();
             if ($survey) {
-                $totalPajakAwal += $survey->nominal_pajak;
-            }
+                $totalPajakAwal += round((float) ($survey->nominal_pajak ?? 0), 2);}
         }
         return $totalPajakAwal;
     }
