@@ -67,24 +67,52 @@ class SurveiHargaGA extends Page implements HasTable
 
         if (!$user->hasRole('Super Admin')) {
             $query->where(function (Builder $q) use ($user) {
+                // Main flow statuses for GA
                 $q->whereIn('status', [
                     Pengajuan::STATUS_SURVEI_GA,
                     Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
                     Pengajuan::STATUS_MENUNGGU_PELUNASAN,
                     Pengajuan::STATUS_SUDAH_BAYAR,
-                    Pengajuan::STATUS_SELESAI,
-                ])->orWhere('ga_surveyed_by', $user->id_user);
+                ])
+                // Also include items explicitly surveyed by this user,
+                // BUT EXCLUDE completed/rejected items
+                ->orWhere(function (Builder $subQ) use ($user) {
+                    $subQ->where('ga_surveyed_by', $user->id_user)
+                        ->whereNotIn('status', [
+                            Pengajuan::STATUS_SELESAI,
+                            Pengajuan::STATUS_DITOLAK_MANAGER,
+                            Pengajuan::STATUS_DITOLAK_KADIV,
+                            Pengajuan::STATUS_DITOLAK_KADIV_GA,
+                            Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL,
+                            Pengajuan::STATUS_DITOLAK_DIREKTUR_UTAMA,
+                            Pengajuan::STATUS_DITOLAK_KADIV_OPS,
+                        ])
+                        ->where('status', 'not like', '%Ditolak%');
+                });
             });
         } else {
-            $query->where(function (Builder $q) {
+            // Super Admin logic: view all active GA-related items, excluding completed/rejected
+             $query->where(function (Builder $q) {
                 $q->whereIn('status', [
                     Pengajuan::STATUS_SURVEI_GA,
                     Pengajuan::STATUS_MENUNGGU_APPROVAL_BUDGET,
                     Pengajuan::STATUS_MENUNGGU_PENCARIAN_DANA,
                     Pengajuan::STATUS_MENUNGGU_PELUNASAN,
                     Pengajuan::STATUS_SUDAH_BAYAR,
-                    Pengajuan::STATUS_SELESAI,
-                ])->orWhereNotNull('ga_surveyed_by');
+                ])
+                ->orWhere(function (Builder $subQ) {
+                    $subQ->whereNotNull('ga_surveyed_by')
+                        ->whereNotIn('status', [
+                            Pengajuan::STATUS_SELESAI,
+                            Pengajuan::STATUS_DITOLAK_MANAGER,
+                            Pengajuan::STATUS_DITOLAK_KADIV,
+                            Pengajuan::STATUS_DITOLAK_KADIV_GA,
+                            Pengajuan::STATUS_DITOLAK_DIREKTUR_OPERASIONAL,
+                            Pengajuan::STATUS_DITOLAK_DIREKTUR_UTAMA,
+                             Pengajuan::STATUS_DITOLAK_KADIV_OPS,
+                        ])
+                         ->where('status', 'not like', '%Ditolak%');
+                });
             });
         }
 
@@ -138,7 +166,7 @@ class SurveiHargaGA extends Page implements HasTable
                                 ->where('kondisi_pajak', 'Pajak ditanggung Perusahaan (Exclude)')
                                 ->first();
                             if ($survey) {
-                                $totalPajakAwal += $survey->nominal_pajak;
+                                $totalPajakAwal += round((float) ($survey->nominal_pajak ?? 0), 2);
                             }
                         }
                         $totalBiayaAwal = $hargaAwalBarang + $totalPajakAwal;
@@ -735,20 +763,21 @@ class SurveiHargaGA extends Page implements HasTable
                             ]);
 
                             if ($isTaxExclude) {
-                                $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                $totalPajakOriginal += round((float) ($survey->nominal_pajak ?? 0), 2);
                                 $taxConditionOriginal = 'Pajak ditanggung Perusahaan (Exclude)';
                                 if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
                             } elseif ($survey->kondisi_pajak === 'Pajak ditanggung Vendor (Include)') {
-                                $totalPajakOriginal += $survey->nominal_pajak ?? 0;
+                                $totalPajakOriginal += round((float) ($survey->nominal_pajak ?? 0), 2);
                                 $taxConditionOriginal = 'Pajak ditanggung Vendor (Include)';
                                 if (!$taxTypeOriginal) $taxTypeOriginal = $survey->jenis_pajak;
                             }
                         }
                     }
 
+                    $totalPajakOriginal  = round($totalPajakOriginal, 2);
                     $totalBiayaOriginal = $totalNilaiBarangOriginal;
                     if ($taxConditionOriginal === 'Pajak ditanggung Perusahaan (Exclude)') {
-                        $totalBiayaOriginal += $totalPajakOriginal;
+                        $totalBiayaOriginal = round($totalBiayaOriginal + $totalPajakOriginal, 2);
                     }
 
                     $latestRevisi = $record->items

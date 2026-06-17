@@ -39,6 +39,14 @@ class StatusPengajuanSaya extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
+            TextColumn::make('items_list')->label('Nama Barang')->searchable(query: function (Builder $query, string $search): Builder {
+                return $query->whereHas('items', function (Builder $q) use ($search) {
+                    $q->where('nama_barang', 'like', "%{$search}%");
+                });
+            })->getStateUsing(function (Pengajuan $record): string {
+                $firstItem = $record->items->first();
+                return $firstItem ? $firstItem->nama_barang : '-';
+            }),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
                 ->money('IDR')
@@ -71,8 +79,7 @@ class StatusPengajuanSaya extends Page implements HasTable
                                 ->where('kondisi_pajak', 'Pajak ditanggung BPRS')
                                 ->first();
                             if ($survey) {
-                                $totalPajakAwal += $survey->nominal_pajak;
-                            }
+                                $totalPajakAwal += round((float) ($survey->nominal_pajak ?? 0), 2);}
                         }
 
                         $totalBiayaAwal = $hargaAwalBarang + $totalPajakAwal;

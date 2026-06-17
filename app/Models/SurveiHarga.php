@@ -25,6 +25,11 @@ class SurveiHarga extends Model
         'rincian_harga',
     ];
 
+    protected $casts = [
+        'harga'        => 'decimal:2',
+        'nominal_pajak' => 'decimal:2',
+    ];
+
     public function pengajuanItem(): BelongsTo
     {
         return $this->belongsTo(PengajuanItem::class, 'id_item');
