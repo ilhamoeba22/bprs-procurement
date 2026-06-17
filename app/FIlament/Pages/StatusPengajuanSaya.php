@@ -39,6 +39,14 @@ class StatusPengajuanSaya extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
+            TextColumn::make('nama_barang')->label('Nama Barang')->searchable(query: function (Builder $query, string $search): Builder {
+                return $query->whereHas('items', function (Builder $q) use ($search) {
+                    $q->where('nama_barang', 'like', "%{$search}%");
+                });
+            })->getStateUsing(function (Pengajuan $record): string {
+                $firstItem = $record->items->first();
+                return $firstItem ? $firstItem->nama_barang : '-';
+            }),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
                 ->money('IDR')
