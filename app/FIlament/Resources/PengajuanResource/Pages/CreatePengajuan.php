@@ -24,6 +24,7 @@ class CreatePengajuan extends CreateRecord
         // Cek apakah ada pengguna lain di divisi yang sama dengan peran 'Manager'
         $managerExists = User::where('id_divisi', $pemohon->id_divisi)
                               ->where('id_user', '!=', $pemohon->id_user) // Pastikan bukan dirinya sendiri
+                              ->where('is_active', true)
                               ->whereHas('roles', function ($query) {
                                   $query->where('name', 'Manager');
                               })

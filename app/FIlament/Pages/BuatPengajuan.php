@@ -150,7 +150,7 @@ class BuatPengajuan extends Page implements HasForms
 
             // Cek siapa atasan langsung dari pemohon
             if ($jabatanPemohon && $jabatanPemohon->acc_jabatan_id) {
-                $atasanUser = User::where('id_jabatan', $jabatanPemohon->acc_jabatan_id)->first();
+                $atasanUser = User::where('id_jabatan', $jabatanPemohon->acc_jabatan_id)->where('is_active', true)->first();
                 if ($atasanUser && $atasanUser->hasRole('Manager')) {
                     $hasManagerAsDirectSuperior = true;
                 }

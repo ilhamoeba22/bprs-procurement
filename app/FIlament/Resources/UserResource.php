@@ -50,6 +50,10 @@ class UserResource extends Resource
                     }),
                 Forms\Components\Hidden::make('id_kantor'),
                 Forms\Components\Hidden::make('id_divisi'),
+                Forms\Components\Toggle::make('is_active')
+                    ->label('Status Aktif')
+                    ->default(true)
+                    ->required(),
             ]);
     }
 
@@ -60,6 +64,16 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('nama_user')->searchable(),
                 Tables\Columns\TextColumn::make('nik_user')->label('NIK (Username)')->searchable(),
                 Tables\Columns\TextColumn::make('jabatan.nama_jabatan')->sortable(),
+                Tables\Columns\ToggleColumn::make('is_active')
+                    ->label('Status Aktif')
+                    ->sortable(),
+            ])
+            ->filters([
+                Tables\Filters\TernaryFilter::make('is_active')
+                    ->label('Status Aktif')
+                    ->placeholder('Semua Pengguna')
+                    ->trueLabel('Hanya Aktif')
+                    ->falseLabel('Hanya Non-Aktif'),
             ])
             ->actions([Tables\Actions\EditAction::make(), Tables\Actions\DeleteAction::make()]);
     }

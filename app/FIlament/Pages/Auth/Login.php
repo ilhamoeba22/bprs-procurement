@@ -27,6 +27,7 @@ class Login extends BaseLogin
         return [
             'nik_user' => $data['nik_user'],
             'password' => $data['password'],
+            'is_active' => true,
         ];
     }
 }
