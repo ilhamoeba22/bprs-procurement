@@ -38,7 +38,7 @@ class PengajuanDitolak extends Page implements HasTable
     protected function getTableQuery(): Builder
     {
         return Pengajuan::query()
-            ->with(['pemohon.divisi', 'items'])
+            ->with(['divisi', 'pemohon.divisi', 'items'])
             ->where(function (Builder $query) {
                 $query->whereIn('status', [
                     Pengajuan::STATUS_DITOLAK_MANAGER,
@@ -57,7 +57,9 @@ class PengajuanDitolak extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
+            TextColumn::make('divisi.nama_divisi')
+                ->label('Divisi')
+                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-'),
             TextColumn::make('nama_barang')->label('Nama Barang')->getStateUsing(function (Pengajuan $record): string {
                 $firstItem = $record->items->first();
                 return $firstItem ? $firstItem->nama_barang : '-';
@@ -82,6 +84,7 @@ class PengajuanDitolak extends Page implements HasTable
                 ->mountUsing(function (Form $form, Pengajuan $record) {
                     $record->load([
                         'items',
+                        'divisi',
                         'pemohon.divisi',
                     ]);
                     $form->fill($record->toArray());

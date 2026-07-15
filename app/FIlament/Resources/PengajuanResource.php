@@ -32,7 +32,7 @@ class PengajuanResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
+        $query = parent::getEloquentQuery()->with(['divisi', 'pemohon.divisi']);
         $user = Auth::user();
 
         if ($user->hasAnyRole(['Super Admin', 'Direksi', 'Kepala Divisi GA'])) {
@@ -40,8 +40,14 @@ class PengajuanResource extends Resource
         }
 
         if ($user->hasRole('Manager') || $user->hasRole('Kepala Divisi')) {
-            return $query->whereHas('pemohon', function (Builder $q) use ($user) {
-                $q->where('id_divisi', $user->id_divisi);
+            return $query->where(function (Builder $q) use ($user) {
+                $q->where('id_divisi', $user->id_divisi)
+                  ->orWhere(function (Builder $sub) use ($user) {
+                      $sub->whereNull('id_divisi')
+                          ->whereHas('pemohon', function (Builder $sq) use ($user) {
+                              $sq->where('id_divisi', $user->id_divisi);
+                          });
+                  });
             });
         }
 

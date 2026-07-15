@@ -41,7 +41,7 @@ class RiwayatPengajuanWidget extends BaseWidget
         return $table
             ->query(
                 fn() => Pengajuan::query()
-                    ->with(['pemohon.divisi'])
+                    ->with(['divisi', 'pemohon.divisi'])
                     ->whereIn('status', $finalStatuses)
             )
             ->defaultSort('updated_at', 'desc')
@@ -53,8 +53,9 @@ class RiwayatPengajuanWidget extends BaseWidget
                     ->label('Nama Pengaju')
                     ->searchable()
                     ->toggleable(),
-                TextColumn::make('pemohon.divisi.nama_divisi')
+                TextColumn::make('divisi.nama_divisi')
                     ->label('Divisi')
+                    ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-')
                     ->toggleable(),
                 TextColumn::make('total_nilai')
                     ->label('Total Nilai')
@@ -75,6 +76,7 @@ class RiwayatPengajuanWidget extends BaseWidget
                     ->color('info')
                     ->action(function (Pengajuan $record) {
                         $record->load([
+                            'divisi',
                             'pemohon.divisi',
                             'pemohon.jabatan',
                             'items.surveiHargas.revisiHargas' => function ($query) {

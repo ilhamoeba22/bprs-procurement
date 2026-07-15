@@ -29,6 +29,11 @@ class AllPengajuanUserResource extends Resource
         return Auth::user()->hasRole('Super Admin');
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with(['divisi', 'pemohon.divisi']);
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -147,7 +152,10 @@ class AllPengajuanUserResource extends Resource
             ->columns([
                 TextColumn::make('kode_pengajuan')->label('Kode')->searchable()->sortable(),
                 TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable()->sortable(),
-                TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi')->sortable(),
+                TextColumn::make('divisi.nama_divisi')
+                    ->label('Divisi')
+                    ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-')
+                    ->sortable(),
                 TextColumn::make('created_at')->label('Tanggal')->date()->sortable(),
                 TextColumn::make('status')
                     ->label('Status')

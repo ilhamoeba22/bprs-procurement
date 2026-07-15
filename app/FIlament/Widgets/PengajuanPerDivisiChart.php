@@ -76,8 +76,7 @@ class PengajuanPerDivisiChart extends ChartWidget
 
         // Query untuk menjumlahkan total_nilai dan mengelompokkannya berdasarkan divisi dalam rentang waktu
         $data = Pengajuan::query()
-            ->join('users', 'pengajuans.id_user_pemohon', '=', 'users.id_user')
-            ->join('divisis', 'users.id_divisi', '=', 'divisis.id_divisi')
+            ->join('divisis', 'pengajuans.id_divisi', '=', 'divisis.id_divisi')
             ->where('pengajuans.status', Pengajuan::STATUS_SELESAI)
             ->where('pengajuans.updated_at', '>=', $start)
             ->groupBy('divisis.nama_divisi')

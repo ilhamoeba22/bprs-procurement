@@ -38,7 +38,7 @@ class PengajuanSelesai extends Page implements HasTable
     protected function getTableQuery(): Builder
     {
         return Pengajuan::query()
-            ->with(['pemohon.divisi', 'items', 'items.surveiHargas', 'vendorPembayaran'])
+            ->with(['divisi', 'pemohon.divisi', 'items', 'items.surveiHargas', 'vendorPembayaran'])
             ->where('status', Pengajuan::STATUS_SELESAI)
             ->latest();
     }
@@ -48,7 +48,9 @@ class PengajuanSelesai extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
+            TextColumn::make('divisi.nama_divisi')
+                ->label('Divisi')
+                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-'),
             TextColumn::make('nama_barang')->label('Nama Barang')->searchable(query: function (Builder $query, string $search): Builder {
                 return $query->whereHas('items', function (Builder $q) use ($search) {
                     $q->where('nama_barang', 'like', "%{$search}%");
@@ -81,6 +83,7 @@ class PengajuanSelesai extends Page implements HasTable
                     $record->load([
                         'items.surveiHargas.revisiHargas.direvisiOleh',
                         'vendorPembayaran',
+                        'divisi',
                         'pemohon.divisi',
                     ]);
                     $form->fill($record->toArray());

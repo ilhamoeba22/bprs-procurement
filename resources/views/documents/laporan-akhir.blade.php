@@ -260,7 +260,7 @@
                         <td class="label">Pemohon</td>
                         <td class="value">: {{ $pengajuan->pemohon->nama_user }}</td>
                         <td class="label">Divisi</td>
-                        <td class="value">: {{ $pengajuan->pemohon->divisi->nama_divisi }}</td>
+                        <td class="value">: {{ $pengajuan->divisi->nama_divisi ?? $pengajuan->pemohon->divisi->nama_divisi ?? '-' }}</td>
                     </tr>
                     <tr>
                         <td class="label">Status Final</td>

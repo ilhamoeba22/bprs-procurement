@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\User;
+use App\Models\Divisi;
 use Illuminate\Support\Str;
 use App\Models\PengajuanItem;
 use App\Models\VendorPembayaran;
@@ -17,10 +18,23 @@ class Pengajuan extends Model
 {
     use HasFactory;
 
+    protected static function booted()
+    {
+        static::creating(function ($pengajuan) {
+            if (empty($pengajuan->id_divisi) && !empty($pengajuan->id_user_pemohon)) {
+                $user = User::find($pengajuan->id_user_pemohon);
+                if ($user) {
+                    $pengajuan->id_divisi = $user->id_divisi;
+                }
+            }
+        });
+    }
+
     protected $primaryKey = 'id_pengajuan';
     protected $fillable = [
         'kode_pengajuan',
         'id_user_pemohon',
+        'id_divisi',
         'status',
         'total_nilai',
         'catatan_revisi',
@@ -88,6 +102,11 @@ class Pengajuan extends Model
     public function pemohon(): BelongsTo
     {
         return $this->belongsTo(User::class, 'id_user_pemohon', 'id_user');
+    }
+
+    public function divisi(): BelongsTo
+    {
+        return $this->belongsTo(Divisi::class, 'id_divisi', 'id_divisi');
     }
 
     public function items(): HasMany

@@ -43,7 +43,7 @@ class PersetujuanKadivOperasional extends Page implements HasTable
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
-        $query = Pengajuan::query()->with(['pemohon.divisi', 'items.surveiHargas.revisiHargas']);
+        $query = Pengajuan::query()->with(['divisi', 'pemohon.divisi', 'items.surveiHargas.revisiHargas']);
 
         $statuses = [
             Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_OPERASIONAL_BUDGET,
@@ -76,7 +76,9 @@ class PersetujuanKadivOperasional extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
+            TextColumn::make('divisi.nama_divisi')
+                ->label('Divisi')
+                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-'),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
                 ->money('IDR')
@@ -163,6 +165,7 @@ class PersetujuanKadivOperasional extends Page implements HasTable
                         'items.surveiHargas.revisiHargas.revisiDirekturOperasionalApprover',
                         'items.surveiHargas.revisiHargas.revisiDirekturUtamaApprover',
                         'vendorPembayaran',
+                        'divisi',
                         'pemohon.divisi',
                         'approverBudget',
                         'validatorBudgetOps',

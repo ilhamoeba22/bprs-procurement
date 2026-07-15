@@ -51,7 +51,7 @@ class PencairanDanaOperasional extends Page implements HasTable
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
-        $query = Pengajuan::query()->with(['pemohon.divisi', 'items.surveiHargas']);
+        $query = Pengajuan::query()->with(['divisi', 'pemohon.divisi', 'items.surveiHargas']);
 
         if (!$user->hasRole('Super Admin')) {
             $query->where(function (Builder $q) use ($user) {
@@ -83,7 +83,9 @@ class PencairanDanaOperasional extends Page implements HasTable
         return [
             TextColumn::make('kode_pengajuan')->label('Kode')->searchable(),
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
-            TextColumn::make('pemohon.divisi.nama_divisi')->label('Divisi'),
+            TextColumn::make('divisi.nama_divisi')
+                ->label('Divisi')
+                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-'),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
                 ->money('IDR')
@@ -167,6 +169,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                         'items.surveiHargas.revisiHargas.revisiDirekturOperasionalApprover',
                         'items.surveiHargas.revisiHargas.revisiDirekturUtamaApprover',
                         'vendorPembayaran',
+                        'divisi',
                         'pemohon.divisi',
                         'approverBudget',
                         'validatorBudgetOps',
@@ -677,7 +680,7 @@ class PencairanDanaOperasional extends Page implements HasTable
                         'kode_pengajuan' => $record->kode_pengajuan,
                         'tanggal_pengajuan' => $record->created_at->translatedFormat('d F Y'),
                         'pemohon' => $record->pemohon->nama_user,
-                        'divisi' => $record->pemohon->divisi->nama_divisi,
+                        'divisi' => $record->divisi->nama_divisi ?? $record->pemohon->divisi->nama_divisi ?? '-',
                         'status_budget' => $record->status_budget,
                         'catatan_budget' => $record->catatan_budget,
                         'items_original' => $itemsOriginal,

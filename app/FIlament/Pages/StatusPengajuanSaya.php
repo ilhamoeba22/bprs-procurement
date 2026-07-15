@@ -124,6 +124,7 @@ class StatusPengajuanSaya extends Page implements HasTable
                         'items.surveiHargas.revisiHargas.revisiDirekturOperasionalApprover',
                         'items.surveiHargas.revisiHargas.revisiDirekturUtamaApprover',
                         'vendorPembayaran',
+                        'divisi',
                         'pemohon.divisi',
                         'approverBudget',
                         'validatorBudgetOps',
