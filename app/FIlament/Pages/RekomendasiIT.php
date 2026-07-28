@@ -40,17 +40,25 @@ class RekomendasiIT extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()->hasAnyRole(['Kepala Divisi IT', 'Super Admin']);
+        $user = Auth::user();
+        if (!$user) return false;
+        if ($user->hasAnyRole(['Kepala Divisi IT', 'Super Admin'])) return true;
+
+        $delegatorIds = $user->getActiveDelegatedPemberiUserIds();
+        return User::whereIn('id_user', $delegatorIds)->whereHas('roles', fn($q) => $q->where('name', 'Kepala Divisi IT'))->exists();
     }
 
     protected function getTableQuery(): Builder
     {
         $user = Auth::user();
+        $delegatedUserIds = $user->getActiveDelegatedPemberiUserIds();
+        $targetUserIds = array_merge([$user->id_user], $delegatedUserIds);
+
         return Pengajuan::query()
             ->with(['divisi', 'pemohon.divisi'])
-            ->where(function (Builder $query) use ($user) {
+            ->where(function (Builder $query) use ($targetUserIds) {
                 $query->where('status', Pengajuan::STATUS_REKOMENDASI_IT)
-                    ->orWhere('it_recommended_by', $user->id_user);
+                    ->orWhereIn('it_recommended_by', $targetUserIds);
             })
             ->latest();
     }
@@ -62,10 +70,11 @@ class RekomendasiIT extends Page implements HasTable
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('divisi.nama_divisi')
                 ->label('Divisi')
-                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-'),
+                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-')
+                ->description(fn (Pengajuan $record) => $record->getPltInfoFor()),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
-                ->money('IDR')
+                ->formatStateUsing(fn ($state) => $state ? 'Rp ' . number_format((float)$state, 0, ',', '.') : 'Rp 0')
                 ->sortable()
                 ->state(function (Pengajuan $record): ?float {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();

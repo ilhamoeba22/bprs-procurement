@@ -43,7 +43,12 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()->hasAnyRole(['Kepala Divisi GA', 'Super Admin']);
+        $user = Auth::user();
+        if (!$user) return false;
+        if ($user->hasAnyRole(['Kepala Divisi GA', 'Super Admin'])) return true;
+
+        $delegatorIds = $user->getActiveDelegatedPemberiUserIds();
+        return User::whereIn('id_user', $delegatorIds)->whereHas('roles', fn($q) => $q->where('name', 'Kepala Divisi GA'))->exists();
     }
 
     protected function getTableQuery(): Builder
@@ -56,10 +61,13 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
             Pengajuan::STATUS_MENUNGGU_APPROVAL_KADIV_GA_REVISI,
         ];
 
+        $delegatedUserIds = $user->getActiveDelegatedPemberiUserIds();
+        $targetUserIds = array_merge([$user->id_user], $delegatedUserIds);
+
         if ($user && !$user->hasRole('Super Admin')) {
-            $query->where(function (Builder $q) use ($user, $statusesForAction) {
+            $query->where(function (Builder $q) use ($targetUserIds, $statusesForAction) {
                 $q->whereIn('status', $statusesForAction)
-                    ->orWhere('kadiv_ga_approved_by', $user->id_user);
+                    ->orWhereIn('kadiv_ga_approved_by', $targetUserIds);
             });
         } else {
             $query->where(function (Builder $q) use ($statusesForAction) {
@@ -80,10 +88,11 @@ class PersetujuanKepalaDivisiGA extends Page implements HasTable
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('divisi.nama_divisi')
                 ->label('Divisi')
-                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-'),
+                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-')
+                ->description(fn (Pengajuan $record) => $record->getPltInfoFor()),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
-                ->money('IDR')
+                ->formatStateUsing(fn ($state) => $state ? 'Rp ' . number_format((float)$state, 0, ',', '.') : 'Rp 0')
                 ->sortable()
                 ->state(function (Pengajuan $record): ?float {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();

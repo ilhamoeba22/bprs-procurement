@@ -39,7 +39,12 @@ class PersetujuanManager extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()->hasAnyRole(['Manager', 'Super Admin']);
+        $user = Auth::user();
+        if (!$user) return false;
+        if ($user->hasAnyRole(['Manager', 'Super Admin'])) return true;
+
+        $delegatorIds = $user->getActiveDelegatedPemberiUserIds();
+        return User::whereIn('id_user', $delegatorIds)->whereHas('roles', fn($q) => $q->where('name', 'Manager'))->exists();
     }
 
     protected function getTableQuery(): Builder
@@ -54,20 +59,24 @@ class PersetujuanManager extends Page implements HasTable
             });
         }
 
-        $query->where(function (Builder $q) use ($user) {
-            $q->where(function (Builder $subQ) use ($user) {
+        $delegatedUserIds = $user->getActiveDelegatedPemberiUserIds();
+        $targetUserIds = array_merge([$user->id_user], $delegatedUserIds);
+        $targetDivisiIds = User::whereIn('id_user', $targetUserIds)->pluck('id_divisi')->filter()->toArray();
+
+        $query->where(function (Builder $q) use ($targetUserIds, $targetDivisiIds) {
+            $q->where(function (Builder $subQ) use ($targetDivisiIds) {
                 $subQ->where('status', Pengajuan::STATUS_MENUNGGU_APPROVAL_MANAGER)
-                    ->where(function (Builder $divQ) use ($user) {
-                        $divQ->where('id_divisi', $user->id_divisi)
-                            ->orWhere(function (Builder $legacyQ) use ($user) {
+                    ->where(function (Builder $divQ) use ($targetDivisiIds) {
+                        $divQ->whereIn('id_divisi', $targetDivisiIds)
+                            ->orWhere(function (Builder $legacyQ) use ($targetDivisiIds) {
                                 $legacyQ->whereNull('id_divisi')
-                                    ->whereHas('pemohon', function (Builder $pemohonQ) use ($user) {
-                                        $pemohonQ->where('id_divisi', $user->id_divisi);
+                                    ->whereHas('pemohon', function (Builder $pemohonQ) use ($targetDivisiIds) {
+                                        $pemohonQ->whereIn('id_divisi', $targetDivisiIds);
                                     });
                             });
                     });
             })
-                ->orWhere('manager_approved_by', $user->id_user);
+                ->orWhereIn('manager_approved_by', $targetUserIds);
         });
 
         return $query->latest();
@@ -80,10 +89,11 @@ class PersetujuanManager extends Page implements HasTable
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('divisi.nama_divisi')
                 ->label('Divisi')
-                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-'),
+                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-')
+                ->description(fn (Pengajuan $record) => $record->getPltInfoFor()),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
-                ->money('IDR')
+                ->formatStateUsing(fn ($state) => $state ? 'Rp ' . number_format((float)$state, 0, ',', '.') : 'Rp 0')
                 ->sortable()
                 ->state(function (Pengajuan $record): ?float {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();

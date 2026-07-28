@@ -103,4 +103,39 @@ class User extends Authenticatable implements FilamentUser
     {
         return $this->belongsTo(Jabatan::class, 'id_jabatan', 'id_jabatan');
     }
+
+    public function delegasiDiberikan()
+    {
+        return $this->hasMany(DelegasiApproval::class, 'id_user_pemberi', 'id_user');
+    }
+
+    public function delegasiDiterima()
+    {
+        return $this->hasMany(DelegasiApproval::class, 'id_user_penerima', 'id_user');
+    }
+
+    /**
+     * Get IDs of users who have currently delegated their approval to this user.
+     */
+    public function getActiveDelegatedPemberiUserIds(): array
+    {
+        return DelegasiApproval::query()
+            ->activeNow()
+            ->where('id_user_penerima', $this->id_user)
+            ->pluck('id_user_pemberi')
+            ->toArray();
+    }
+
+    /**
+     * Get Collection of User models for users who delegated their approval to this user.
+     */
+    public function getActiveDelegatedPemberiUsers()
+    {
+        $ids = $this->getActiveDelegatedPemberiUserIds();
+        if (empty($ids)) {
+            return collect();
+        }
+
+        return User::whereIn('id_user', $ids)->get();
+    }
 }

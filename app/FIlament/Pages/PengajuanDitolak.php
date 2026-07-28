@@ -66,7 +66,7 @@ class PengajuanDitolak extends Page implements HasTable
             }),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
-                ->money('IDR')
+                ->formatStateUsing(fn ($state) => $state ? 'Rp ' . number_format((float)$state, 0, ',', '.') : 'Rp 0')
                 ->sortable(),
             BadgeColumn::make('status')
                 ->label('Status')

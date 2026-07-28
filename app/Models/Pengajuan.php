@@ -291,4 +291,31 @@ class Pengajuan extends Model
 
         return "{$sanitizedKode}_{$processName}_{timestamp}_{$randomStr}.{$extension}";
     }
+
+    /**
+     * Check if the given user is viewing/approving this pengajuan as a substitute (Plt/Delegation).
+     */
+    public function getPltInfoFor(?User $user = null): ?string
+    {
+        $user = $user ?? \Illuminate\Support\Facades\Auth::user();
+        if (!$user) {
+            return null;
+        }
+
+        $delegatorIds = $user->getActiveDelegatedPemberiUserIds();
+        if (empty($delegatorIds)) {
+            return null;
+        }
+
+        // Find the delegator matching division or role
+        $delegator = User::whereIn('id_user', $delegatorIds)
+            ->where('id_divisi', $this->id_divisi)
+            ->first();
+
+        if (!$delegator) {
+            $delegator = User::whereIn('id_user', $delegatorIds)->first();
+        }
+
+        return $delegator ? "Plt: {$delegator->nama_user}" : null;
+    }
 }

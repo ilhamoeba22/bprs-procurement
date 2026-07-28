@@ -41,7 +41,12 @@ class PersetujuanDirekturUtama extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user() && Auth::user()->hasAnyRole(['Direktur Utama', 'Super Admin']);
+        $user = Auth::user();
+        if (!$user) return false;
+        if ($user->hasAnyRole(['Direktur Utama', 'Super Admin'])) return true;
+
+        $delegatorIds = $user->getActiveDelegatedPemberiUserIds();
+        return User::whereIn('id_user', $delegatorIds)->whereHas('roles', fn($q) => $q->where('name', 'Direktur Utama'))->exists();
     }
 
     protected function getTableQuery(): Builder
@@ -49,16 +54,19 @@ class PersetujuanDirekturUtama extends Page implements HasTable
         $user = Auth::user();
         $query = Pengajuan::query()->with(['pemohon', 'divisi', 'pemohon.divisi']);
 
+        $delegatedUserIds = $user->getActiveDelegatedPemberiUserIds();
+        $targetUserIds = array_merge([$user->id_user], $delegatedUserIds);
+
         if ($user && !$user->hasRole('Super Admin')) {
-            $query->where(function (Builder $q) use ($user) {
+            $query->where(function (Builder $q) use ($targetUserIds) {
                 $q->whereIn('status', [
                     Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA,
                     Pengajuan::STATUS_MENUNGGU_APPROVAL_DIREKTUR_UTAMA_REVISI,
-                ])->orWhere(function (Builder $subq) use ($user) {
+                ])->orWhere(function (Builder $subq) use ($targetUserIds) {
                     $subq->where('status', Pengajuan::STATUS_MENUNGGU_PELUNASAN)
                         ->whereNotNull('direktur_utama_approved_by')
-                        ->where('direktur_utama_approved_by', $user->id_user);
-                })->orWhere('direktur_utama_approved_by', $user->id_user);
+                        ->whereIn('direktur_utama_approved_by', $targetUserIds);
+                })->orWhereIn('direktur_utama_approved_by', $targetUserIds);
             });
         } else {
             $query->where(function (Builder $q) {
@@ -80,10 +88,11 @@ class PersetujuanDirekturUtama extends Page implements HasTable
             TextColumn::make('pemohon.nama_user')->label('Pemohon')->searchable(),
             TextColumn::make('divisi.nama_divisi')
                 ->label('Divisi')
-                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-'),
+                ->default(fn (Pengajuan $record) => $record->pemohon?->divisi?->nama_divisi ?? '-')
+                ->description(fn (Pengajuan $record) => $record->getPltInfoFor()),
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
-                ->money('IDR')
+                ->formatStateUsing(fn ($state) => $state ? 'Rp ' . number_format((float)$state, 0, ',', '.') : 'Rp 0')
                 ->sortable()
                 ->state(function (Pengajuan $record): ?float {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();

@@ -104,7 +104,7 @@ class PengajuanResource extends Resource
                         Pengajuan::STATUS_DISETUJUI => 'success',
                         default => 'secondary',
                     }),
-                Tables\Columns\TextColumn::make('total_nilai')->money('IDR')->sortable(),
+                Tables\Columns\TextColumn::make('total_nilai')->formatStateUsing(fn ($state) => $state ? 'Rp ' . number_format((float)$state, 0, ',', '.') : 'Rp 0')->sortable(),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
             ->actions([

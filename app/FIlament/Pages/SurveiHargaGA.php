@@ -57,7 +57,12 @@ class SurveiHargaGA extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()->hasAnyRole(['General Affairs', 'Super Admin']);
+        $user = Auth::user();
+        if (!$user) return false;
+        if ($user->hasAnyRole(['General Affairs', 'Kepala Divisi GA', 'Super Admin'])) return true;
+
+        $delegatorIds = $user->getActiveDelegatedPemberiUserIds();
+        return User::whereIn('id_user', $delegatorIds)->whereHas('roles', fn($q) => $q->whereIn('name', ['General Affairs', 'Kepala Divisi GA']))->exists();
     }
 
     protected function getTableQuery(): Builder
@@ -65,8 +70,11 @@ class SurveiHargaGA extends Page implements HasTable
         $user = Auth::user();
         $query = Pengajuan::query()->with(['divisi', 'pemohon.divisi', 'items', 'items.surveiHargas', 'vendorPembayaran']);
 
+        $delegatedUserIds = $user->getActiveDelegatedPemberiUserIds();
+        $targetUserIds = array_merge([$user->id_user], $delegatedUserIds);
+
         if (!$user->hasRole('Super Admin')) {
-            $query->where(function (Builder $q) use ($user) {
+            $query->where(function (Builder $q) use ($targetUserIds) {
                 // Main flow statuses for GA
                 $q->whereIn('status', [
                     Pengajuan::STATUS_SURVEI_GA,
@@ -74,10 +82,10 @@ class SurveiHargaGA extends Page implements HasTable
                     Pengajuan::STATUS_MENUNGGU_PELUNASAN,
                     Pengajuan::STATUS_SUDAH_BAYAR,
                 ])
-                // Also include items explicitly surveyed by this user,
+                // Also include items explicitly surveyed by this user or delegated users,
                 // BUT EXCLUDE completed/rejected items
-                ->orWhere(function (Builder $subQ) use ($user) {
-                    $subQ->where('ga_surveyed_by', $user->id_user)
+                ->orWhere(function (Builder $subQ) use ($targetUserIds) {
+                    $subQ->whereIn('ga_surveyed_by', $targetUserIds)
                         ->whereNotIn('status', [
                             Pengajuan::STATUS_SELESAI,
                             Pengajuan::STATUS_DITOLAK_MANAGER,
@@ -138,7 +146,7 @@ class SurveiHargaGA extends Page implements HasTable
 
             TextColumn::make('total_nilai')
                 ->label('Total Nilai')
-                ->money('IDR')
+                ->formatStateUsing(fn ($state) => $state ? 'Rp ' . number_format((float)$state, 0, ',', '.') : 'Rp 0')
                 ->sortable()
                 ->state(function (Pengajuan $record): ?float {
                     $latestRevisi = $record->items->flatMap->surveiHargas->flatMap->revisiHargas->sortByDesc('created_at')->first();
