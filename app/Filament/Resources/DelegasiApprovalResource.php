@@ -85,10 +85,12 @@ class DelegasiApprovalResource extends Resource
                     ->schema([
                         Select::make('id_user_pemberi')
                             ->label('User Berhalangan / Cuti')
-                            ->helperText($isHrdOrAdmin ? 'Silakan pilih user yang berhalangan / cuti / sakit.' : 'Otomatis terisi akun Anda.')
+                            ->helperText(fn () => Auth::user()?->isHrdOrAdmin() 
+                                ? '💡 Wewenang Staff HRD: Anda dapat memilihkan pegawai/pejabat mana saja yang sedang izin sakit/cuti.' 
+                                : 'Otomatis terisi akun Anda.')
                             ->options(User::where('is_active', true)->pluck('nama_user', 'id_user'))
-                            ->default($currentUser->id_user)
-                            ->disabled(!$isHrdOrAdmin)
+                            ->default(fn () => Auth::id())
+                            ->disabled(fn () => !Auth::user()?->isHrdOrAdmin())
                             ->dehydrated()
                             ->required()
                             ->reactive()
@@ -96,9 +98,9 @@ class DelegasiApprovalResource extends Resource
 
                         Select::make('id_user_penerima')
                             ->label('User Pengganti (Plt)')
-                            ->helperText('Daftar user aktif dari divisi yang sama.')
-                            ->options(function (callable $get) use ($currentUser, $isHrdOrAdmin) {
-                                $pemberiId = $get('id_user_pemberi') ?? $currentUser->id_user;
+                            ->helperText('Daftar user aktif dari divisi yang sama dengan User Cuti.')
+                            ->options(function (callable $get) {
+                                $pemberiId = $get('id_user_pemberi') ?? Auth::id();
                                 $pemberi = User::find($pemberiId);
 
                                 if (!$pemberi || !$pemberi->id_divisi) {

@@ -144,11 +144,18 @@ class User extends Authenticatable implements FilamentUser
             return true;
         }
 
-        $namaJabatan = strtolower($this->jabatan?->nama_jabatan ?? '');
-        if (str_contains($namaJabatan, 'hrd') || str_contains($namaJabatan, 'hr,') || str_contains($namaJabatan, 'human resource')) {
+        $jabatan = $this->jabatan ?? ($this->id_jabatan ? Jabatan::find($this->id_jabatan) : null);
+        $namaJabatan = strtolower($jabatan?->nama_jabatan ?? '');
+        if (str_contains($namaJabatan, 'hrd') || str_contains($namaJabatan, 'hr,') || str_contains($namaJabatan, 'hr') || str_contains($namaJabatan, 'human resource')) {
             return true;
         }
 
-        return $this->hasAnyRole(['Staff HRD', 'HRD', 'HR']);
+        $divisi = $this->divisi ?? ($this->id_divisi ? Divisi::find($this->id_divisi) : null);
+        $namaDivisi = strtolower($divisi?->nama_divisi ?? '');
+        if (str_contains($namaDivisi, 'hr') || str_contains($namaDivisi, 'human resource')) {
+            return true;
+        }
+
+        return $this->hasAnyRole(['Staff HRD', 'HRD', 'HR', 'Kepala Divisi HR, GA dan Legal']);
     }
 }
