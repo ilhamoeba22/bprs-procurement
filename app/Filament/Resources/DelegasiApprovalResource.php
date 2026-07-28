@@ -59,10 +59,10 @@ class DelegasiApprovalResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery()->with(['pemberi.divisi', 'penerima.divisi']);
+        $query = parent::getEloquentQuery()->with(['pemberi.divisi', 'penerima.divisi', 'creator', 'deactivator']);
         $user = Auth::user();
 
-        if ($user->hasRole('Super Admin')) {
+        if ($user && $user->isHrdOrAdmin()) {
             return $query->latest();
         }
 
@@ -76,7 +76,7 @@ class DelegasiApprovalResource extends Resource
     public static function form(Form $form): Form
     {
         $currentUser = Auth::user();
-        $isSuperAdmin = $currentUser->hasRole('Super Admin');
+        $isHrdOrAdmin = $currentUser && $currentUser->isHrdOrAdmin();
 
         return $form
             ->schema([
@@ -85,10 +85,10 @@ class DelegasiApprovalResource extends Resource
                     ->schema([
                         Select::make('id_user_pemberi')
                             ->label('User Berhalangan / Cuti')
-                            ->helperText($isSuperAdmin ? 'Pilih user yang berhalangan/sakit.' : 'Otomatis terisi akun Anda.')
+                            ->helperText($isHrdOrAdmin ? 'Silakan pilih user yang berhalangan / cuti / sakit.' : 'Otomatis terisi akun Anda.')
                             ->options(User::where('is_active', true)->pluck('nama_user', 'id_user'))
                             ->default($currentUser->id_user)
-                            ->disabled(!$isSuperAdmin)
+                            ->disabled(!$isHrdOrAdmin)
                             ->dehydrated()
                             ->required()
                             ->reactive()
@@ -97,7 +97,7 @@ class DelegasiApprovalResource extends Resource
                         Select::make('id_user_penerima')
                             ->label('User Pengganti (Plt)')
                             ->helperText('Daftar user aktif dari divisi yang sama.')
-                            ->options(function (callable $get) use ($currentUser, $isSuperAdmin) {
+                            ->options(function (callable $get) use ($currentUser, $isHrdOrAdmin) {
                                 $pemberiId = $get('id_user_pemberi') ?? $currentUser->id_user;
                                 $pemberi = User::find($pemberiId);
 
@@ -181,6 +181,16 @@ class DelegasiApprovalResource extends Resource
                     ->getStateUsing(fn (DelegasiApproval $record) => $record->status_label)
                     ->color(fn (DelegasiApproval $record) => $record->status_color),
 
+                TextColumn::make('creator.nama_user')
+                    ->label('Dibuat Oleh')
+                    ->placeholder('Sistem / User')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('deactivator.nama_user')
+                    ->label('Diakhiri Oleh (HRD)')
+                    ->placeholder('-')
+                    ->description(fn (DelegasiApproval $record) => $record->deactivated_at ? $record->deactivated_at->format('d M Y H:i') : null),
+
                 IconColumn::make('is_active')
                     ->label('Aktif')
                     ->boolean(),
@@ -196,16 +206,20 @@ class DelegasiApprovalResource extends Resource
                         if (!$user || !$record->is_active || now()->gt($record->tanggal_selesai)) {
                             return false;
                         }
-                        return $user->hasRole('Super Admin') || $record->id_user_pemberi === $user->id_user || $record->created_by === $user->id_user;
+                        return $user->isHrdOrAdmin() || $record->id_user_pemberi === $user->id_user || $record->created_by === $user->id_user;
                     })
                     ->requiresConfirmation()
                     ->modalHeading('Akhiri Masa Delegasi?')
-                    ->modalSubheading('User pengganti tidak akan lagi menerima wewenang persetujuan setelah delegasi ini diakhiri.')
+                    ->modalSubheading('User pengganti tidak akan lagi menerima wewenang persetujuan setelah delegasi ini diakhiri oleh HRD.')
                     ->action(function (DelegasiApproval $record) {
-                        $record->update(['is_active' => false]);
+                        $record->update([
+                            'is_active' => false,
+                            'deactivated_by' => Auth::id(),
+                            'deactivated_at' => now(),
+                        ]);
                         Notification::make()
                             ->title('Delegasi Diakhiri')
-                            ->body('Masa delegasi telah di-nonaktifkan.')
+                            ->body('Masa delegasi telah di-nonaktifkan oleh HRD.')
                             ->success()
                             ->send();
                     }),

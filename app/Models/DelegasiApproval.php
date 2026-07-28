@@ -21,6 +21,8 @@ class DelegasiApproval extends Model
         'alasan',
         'is_active',
         'created_by',
+        'deactivated_by',
+        'deactivated_at',
     ];
 
     protected function casts(): array
@@ -28,6 +30,7 @@ class DelegasiApproval extends Model
         return [
             'tanggal_mulai' => 'datetime',
             'tanggal_selesai' => 'datetime',
+            'deactivated_at' => 'datetime',
             'is_active' => 'boolean',
         ];
     }
@@ -45,6 +48,11 @@ class DelegasiApproval extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by', 'id_user');
+    }
+
+    public function deactivator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'deactivated_by', 'id_user');
     }
 
     /**

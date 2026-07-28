@@ -132,10 +132,23 @@ class User extends Authenticatable implements FilamentUser
     public function getActiveDelegatedPemberiUsers()
     {
         $ids = $this->getActiveDelegatedPemberiUserIds();
-        if (empty($ids)) {
-            return collect();
+        return User::whereIn('id_user', $ids)->get();
+    }
+
+    /**
+     * Check if user is HRD (Staff HRD / Kadiv HR) or Super Admin.
+     */
+    public function isHrdOrAdmin(): bool
+    {
+        if ($this->hasRole('Super Admin')) {
+            return true;
         }
 
-        return User::whereIn('id_user', $ids)->get();
+        $namaJabatan = strtolower($this->jabatan?->nama_jabatan ?? '');
+        if (str_contains($namaJabatan, 'hrd') || str_contains($namaJabatan, 'hr,') || str_contains($namaJabatan, 'human resource')) {
+            return true;
+        }
+
+        return $this->hasAnyRole(['Staff HRD', 'HRD', 'HR']);
     }
 }
