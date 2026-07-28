@@ -88,7 +88,9 @@ class DelegasiApprovalResource extends Resource
                             ->helperText(fn () => Auth::user()?->isHrdOrAdmin() 
                                 ? '💡 Wewenang Staff HRD: Anda dapat memilihkan pegawai/pejabat mana saja yang sedang izin sakit/cuti.' 
                                 : 'Otomatis terisi akun Anda.')
-                            ->options(User::where('is_active', true)->pluck('nama_user', 'id_user'))
+                            ->options(User::where('is_active', true)
+                                ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'Super Admin'))
+                                ->pluck('nama_user', 'id_user'))
                             ->default(fn () => Auth::id())
                             ->disabled(fn () => !Auth::user()?->isHrdOrAdmin())
                             ->dehydrated()
@@ -110,6 +112,7 @@ class DelegasiApprovalResource extends Resource
                                 return User::where('id_divisi', $pemberi->id_divisi)
                                     ->where('id_user', '!=', $pemberiId)
                                     ->where('is_active', true)
+                                    ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'Super Admin'))
                                     ->pluck('nama_user', 'id_user');
                             })
                             ->required()
