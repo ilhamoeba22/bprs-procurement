@@ -54,8 +54,14 @@ class DelegasiApproval extends Model
     {
         $now = now();
         return $query->where('is_active', true)
-            ->where('tanggal_mulai', '<=', $now)
-            ->where('tanggal_selesai', '>=', $now);
+            ->where(function ($q) use ($now) {
+                $q->where('tanggal_mulai', '<=', $now)
+                  ->orWhereDate('tanggal_mulai', '<=', $now->toDateString());
+            })
+            ->where(function ($q) use ($now) {
+                $q->where('tanggal_selesai', '>=', $now)
+                  ->orWhereDate('tanggal_selesai', '>=', $now->toDateString());
+            });
     }
 
     /**
