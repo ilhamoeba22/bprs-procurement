@@ -27,7 +27,6 @@ class AdminPanelProvider extends PanelProvider
     {
         return $panel
             ->default()->id('admin')->path('admin')
-            ->login(\App\Filament\Pages\Auth\Login::class)
             ->brandLogo(asset('images/logo_mci.png'))
             ->brandLogoHeight('55px')
             ->favicon(asset('images/head_logo.png'))
@@ -70,7 +69,6 @@ class AdminPanelProvider extends PanelProvider
                     }
 
                     function checkSsoSession() {
-                        if ("' . (env('SSO_BYPASS', true) ? '1' : '0') . '" === "1") return;
                         var token = localStorage.getItem("sso_token");
                         if (!token) return;
 

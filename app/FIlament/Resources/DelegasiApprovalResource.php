@@ -31,9 +31,30 @@ class DelegasiApprovalResource extends Resource
     protected static ?string $navigationGroup = 'Pengaturan & Otorisasi';
     protected static ?int $navigationSort = 10;
 
-    public static function canAccess(): bool
+    public static function canViewAny(): bool
     {
         return Auth::check() && Auth::user()->is_active;
+    }
+
+    public static function canCreate(): bool
+    {
+        return Auth::check() && Auth::user()->is_active;
+    }
+
+    public static function canEdit($record): bool
+    {
+        $user = Auth::user();
+        if (!$user) return false;
+        if ($user->hasRole('Super Admin')) return true;
+        return $record->id_user_pemberi === $user->id_user || $record->created_by === $user->id_user;
+    }
+
+    public static function canDelete($record): bool
+    {
+        $user = Auth::user();
+        if (!$user) return false;
+        if ($user->hasRole('Super Admin')) return true;
+        return $record->id_user_pemberi === $user->id_user || $record->created_by === $user->id_user;
     }
 
     public static function getEloquentQuery(): Builder
