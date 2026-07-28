@@ -9,10 +9,9 @@ use Filament\Support\Colors\Color;
 use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\MenuItem;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use App\Filament\Widgets\PengeluaranHarianChart;
 use App\Filament\Widgets\RiwayatPengajuanWidget;
-use Illuminate\Cookie\Middleware\EncryptCookies;
-use App\Filament\Widgets\PengajuanPerDivisiChart;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -35,7 +34,6 @@ class AdminPanelProvider extends PanelProvider
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([Pages\Dashboard::class])
             ->widgets([
-                PengajuanPerDivisiChart::class,
                 PengeluaranHarianChart::class,
                 RiwayatPengajuanWidget::class,
             ])
