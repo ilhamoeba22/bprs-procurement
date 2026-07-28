@@ -11,6 +11,7 @@ class PengeluaranHarianChart extends ChartWidget
     protected static ?string $heading = 'Grafik Pengeluaran';
     protected static ?int $sort = 1;
     protected static ?string $maxHeight = '210px';
+    protected int | string | array $columnSpan = 'full';
 
     /**
      * Filter dropdown chart
