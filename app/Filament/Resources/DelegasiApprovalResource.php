@@ -80,11 +80,12 @@ class DelegasiApprovalResource extends Resource
 
         return $form
             ->schema([
-                Forms\Components\Section::make('Informasi Delegasi & Cuti')
-                    ->description('Pilih user pengganti (Plt) dari divisi yang sama untuk menggantikan persetujuan saat Anda berhalangan.')
+                Forms\Components\Section::make('Informasi Delegasi & Cuti (Plt)')
+                    ->description('Penunjukan User Pengganti (Plt) berfungsi mengalihkan wewenang persetujuan (approval) pengadaan kepada rekan di divisi yang sama selama rentang tanggal yang ditentukan.')
                     ->schema([
                         Select::make('id_user_pemberi')
                             ->label('User Berhalangan / Cuti')
+                            ->helperText($isSuperAdmin ? 'Pilih user yang berhalangan/sakit.' : 'Otomatis terisi akun Anda.')
                             ->options(User::where('is_active', true)->pluck('nama_user', 'id_user'))
                             ->default($currentUser->id_user)
                             ->disabled(!$isSuperAdmin)
@@ -95,7 +96,7 @@ class DelegasiApprovalResource extends Resource
 
                         Select::make('id_user_penerima')
                             ->label('User Pengganti (Plt)')
-                            ->helperText('Hanya menampilkan user aktif dari divisi yang sama.')
+                            ->helperText('Daftar user aktif dari divisi yang sama.')
                             ->options(function (callable $get) use ($currentUser, $isSuperAdmin) {
                                 $pemberiId = $get('id_user_pemberi') ?? $currentUser->id_user;
                                 $pemberi = User::find($pemberiId);
@@ -136,13 +137,11 @@ class DelegasiApprovalResource extends Resource
 
                         Textarea::make('alasan')
                             ->label('Catatan / Alasan Halangan')
-                            ->placeholder('Contoh: Cuti tahunan 3 hari / Dinas luar kota')
+                            ->placeholder('Contoh: Cuti tahunan 3 hari / Izin sakit / Dinas luar kota')
                             ->columnSpanFull(),
 
-                        Toggle::make('is_active')
-                            ->label('Status Aktif')
-                            ->default(true)
-                            ->columnSpanFull(),
+                        Forms\Components\Hidden::make('is_active')
+                            ->default(true),
                     ])->columns(2),
             ]);
     }
