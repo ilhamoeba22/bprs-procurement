@@ -191,7 +191,13 @@ class DelegasiApprovalResource extends Resource
                     ->label('Akhiri Sekarang')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
-                    ->visible(fn (DelegasiApproval $record) => $record->is_active && now()->lte($record->tanggal_selesai))
+                    ->visible(function (DelegasiApproval $record) {
+                        $user = Auth::user();
+                        if (!$user || !$record->is_active || now()->gt($record->tanggal_selesai)) {
+                            return false;
+                        }
+                        return $user->hasRole('Super Admin') || $record->id_user_pemberi === $user->id_user || $record->created_by === $user->id_user;
+                    })
                     ->requiresConfirmation()
                     ->modalHeading('Akhiri Masa Delegasi?')
                     ->modalSubheading('User pengganti tidak akan lagi menerima wewenang persetujuan setelah delegasi ini diakhiri.')
